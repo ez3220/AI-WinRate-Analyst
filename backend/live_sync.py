@@ -3,7 +3,7 @@
 A successful sync writes provider data plus an immutable sync_run audit record.
 No recommendation is generated from an incomplete provider snapshot.
 """
-from datetime import date
+from datetime import date, datetime, timezone
 from provider_config import ProviderConfig
 from provider_adapters import MLBAdapter, OddsAdapter, WeatherAdapter
 from ingestion import normalize_game, normalize_odds, dedupe_odds
@@ -29,18 +29,17 @@ def run_live_sync(game_date: str | None = None):
         odds_raw = OddsAdapter(cfg.odds_base_url, cfg.odds_api_key).odds(game_date)
         games = [normalize_game(x) for x in games_raw]
 
-        game_index = {}
-        for game in games:
-            game_index[(_team_key(game.get('away_team_name')), _team_key(game.get('home_team_name')))] = game['id']
-
-        captured_at = __import__('datetime').datetime.now(__import__('datetime').timezone.utc)
+        game_index = {
+            (_team_key(game.get('away_team_name')), _team_key(game.get('home_team_name'))): game['id']
+            for game in games
+        }
+        captured_at = datetime.now(timezone.utc)
         odds = []
         for raw in odds_raw:
             key = (_team_key(raw.get('away_team_name')), _team_key(raw.get('home_team_name')))
             game_id = game_index.get(key)
-            if game_id is None:
-                continue
-            odds.append(normalize_odds(raw, game_id, captured_at=captured_at))
+            if game_id is not None:
+                odds.append(normalize_odds(raw, game_id, captured_at=captured_at))
         odds = dedupe_odds(odds)
 
         games_written = upsert_games(games)

@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import '../core/api_config.dart';
 
 class BackendApi {
-  const BackendApi({http.Client? client}) : _client = client ?? const http.Client();
+  BackendApi({http.Client? client}) : _client = client ?? http.Client();
   final http.Client _client;
 
   Uri _uri(String path, [Map<String, String>? query]) =>

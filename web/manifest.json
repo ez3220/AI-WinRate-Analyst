@@ -1,0 +1,12 @@
+{
+  "name": "AI 勝率分析師",
+  "short_name": "勝率分析師",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#080A0F",
+  "theme_color": "#080A0F",
+  "description": "AI 勝率分析師 V4",
+  "orientation": "portrait-primary",
+  "lang": "zh-TW",
+  "icons": []
+}

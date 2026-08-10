@@ -15,3 +15,6 @@ AI 運彩助手 / AI 勝率分析師
 - VIP 訂閱
 
 Reference UX: clean mobile-first dashboard with concise recommendation cards and one-tap detailed analysis.
+
+## Deployment
+GitHub Pages deployment is managed by `.github/workflows/pages.yml`.

@@ -1,6 +1,4 @@
-"""V3.5 ingestion contracts and normalization helpers.
-Provider adapters intentionally accept provider-neutral payloads; network credentials stay server-side.
-"""
+"""Normalization helpers. Preserve source and capture time for auditability."""
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List
 
@@ -10,8 +8,11 @@ def utc_now() -> datetime:
 
 
 def normalize_game(raw: Dict[str, Any]) -> Dict[str, Any]:
+    game_id = raw.get('id') or raw.get('game_id')
+    if game_id is None:
+        raise ValueError('game payload missing id')
     return {
-        'id': str(raw.get('id')),
+        'id': str(game_id),
         'sport': str(raw.get('sport', 'mlb')).lower(),
         'game_date': raw.get('game_date'),
         'start_time': raw.get('start_time'),
@@ -22,18 +23,23 @@ def normalize_game(raw: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def normalize_odds(raw: Dict[str, Any], captured_at: datetime | None = None) -> Dict[str, Any]:
+def normalize_odds(raw: Dict[str, Any], captured_at: datetime | None = None, source: str = 'odds_provider') -> Dict[str, Any]:
     price = raw.get('decimal_odds')
-    implied = None if price is None or price <= 1 else 1 / price
+    if price is None or float(price) <= 1:
+        raise ValueError('odds payload has invalid decimal_odds')
+    game_id = raw.get('game_id')
+    if game_id is None:
+        raise ValueError('odds payload missing game_id')
     return {
-        'game_id': str(raw.get('game_id')),
+        'game_id': str(game_id),
         'snapshot_at': captured_at or utc_now(),
+        'source': source,
         'bookmaker': raw.get('bookmaker'),
         'market': raw.get('market'),
         'outcome': raw.get('outcome'),
         'point': raw.get('point'),
-        'decimal_odds': price,
-        'implied_probability': implied,
+        'decimal_odds': float(price),
+        'implied_probability': 1 / float(price),
     }
 
 
@@ -41,7 +47,7 @@ def dedupe_odds(rows: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
     seen = set()
     result = []
     for row in rows:
-        key = (row['game_id'], row['bookmaker'], row['market'], row['outcome'], row['point'], row['decimal_odds'])
+        key = (row['game_id'], row['source'], row['bookmaker'], row['market'], row['outcome'], row['point'])
         if key not in seen:
             seen.add(key)
             result.append(row)

@@ -7,19 +7,24 @@ on:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
 
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate site files
+      - name: Validate and prepare site
         run: |
           set -e
           test -s index.html
@@ -28,7 +33,7 @@ jobs:
           cp index.html _site/index.html
           cp manifest.json _site/manifest.json
           touch _site/.nojekyll
-          echo "Deploying files:"
+          echo "Files deployed:"
           find _site -maxdepth 1 -type f -print
 
       - name: Setup Pages
@@ -39,16 +44,6 @@ jobs:
         with:
           path: _site
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

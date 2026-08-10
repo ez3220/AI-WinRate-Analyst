@@ -18,18 +18,19 @@ def normalize_game(raw: Dict[str, Any]) -> Dict[str, Any]:
         'start_time': raw.get('start_time'),
         'away_team_id': raw.get('away_team_id'),
         'home_team_id': raw.get('home_team_id'),
+        'away_team_name': raw.get('away_team_name'),
+        'home_team_name': raw.get('home_team_name'),
         'venue_id': raw.get('venue_id'),
+        'venue_lat': raw.get('venue_lat'),
+        'venue_lon': raw.get('venue_lon'),
         'status': raw.get('status', 'scheduled'),
     }
 
 
-def normalize_odds(raw: Dict[str, Any], captured_at: datetime | None = None, source: str = 'odds_provider') -> Dict[str, Any]:
+def normalize_odds(raw: Dict[str, Any], game_id: str, captured_at: datetime | None = None, source: str = 'the-odds-api') -> Dict[str, Any]:
     price = raw.get('decimal_odds')
     if price is None or float(price) <= 1:
         raise ValueError('odds payload has invalid decimal_odds')
-    game_id = raw.get('game_id')
-    if game_id is None:
-        raise ValueError('odds payload missing game_id')
     return {
         'game_id': str(game_id),
         'snapshot_at': captured_at or utc_now(),

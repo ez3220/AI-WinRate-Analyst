@@ -27,17 +27,22 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Install dependencies
+      - name: Install Flutter dependencies
         run: flutter pub get
 
-      - name: Analyze
+      - name: Analyze Flutter
         run: flutter analyze
 
-      - name: Test
+      - name: Test Flutter
         run: flutter test
 
-      - name: Build web
-        run: flutter build web --release --base-href "/${{ github.event.repository.name }}/"
+      - name: Validate backend Python syntax
+        run: python -m compileall -q backend
+
+      - name: Build Flutter web
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+        run: flutter build web --release --base-href "/${{ github.event.repository.name }}/" --dart-define=API_BASE_URL="$API_BASE_URL"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4

@@ -1,10 +1,12 @@
 from datetime import date
 from typing import Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from pydantic import BaseModel, Field
 from quant_engine import TeamInput, Market, evaluate
+from live_api import router as live_router
 
-app = FastAPI(title='AI WinRate Analyst API', version='3.4.0')
+app = FastAPI(title='AI WinRate Analyst API', version='4.0.0')
+app.include_router(live_router)
 
 class TeamPayload(BaseModel):
     pitcher_era: Optional[float] = None
@@ -25,7 +27,7 @@ class EvaluateRequest(BaseModel):
 
 @app.get('/health')
 def health():
-    return {'status': 'ok', 'version': '3.4.0'}
+    return {'status': 'ok', 'version': '4.0.0'}
 
 @app.post('/evaluate')
 def evaluate_game(req: EvaluateRequest):
@@ -34,4 +36,4 @@ def evaluate_game(req: EvaluateRequest):
 
 @app.get('/version')
 def version():
-    return {'api': '3.4.0', 'model': 'V3.3', 'date': date.today().isoformat()}
+    return {'api': '4.0.0', 'model': 'V4', 'date': date.today().isoformat()}

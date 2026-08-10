@@ -1,0 +1,43 @@
+openapi: 3.0.3
+info:
+  title: AI WinRate Analyst Backend
+  version: 3.2.0
+paths:
+  /health:
+    get:
+      responses:
+        '200': {description: OK}
+  /games:
+    get:
+      parameters:
+        - {name: date, in: query, required: true, schema: {type: string, format: date}}
+        - {name: sport, in: query, required: false, schema: {type: string, enum: [mlb, npb, nba]}}
+      responses:
+        '200': {description: Games}
+  /games/{game_id}:
+    get:
+      parameters: [{name: game_id, in: path, required: true, schema: {type: string}}]
+      responses: {'200': {description: Game detail}}
+  /predictions:
+    get:
+      parameters:
+        - {name: date, in: query, required: true, schema: {type: string, format: date}}
+        - {name: limit, in: query, required: false, schema: {type: integer, default: 3}}
+      responses: {'200': {description: Ranked predictions}}
+  /odds/{game_id}:
+    get:
+      parameters: [{name: game_id, in: path, required: true, schema: {type: string}}]
+      responses: {'200': {description: Odds snapshots}}
+  /performance:
+    get:
+      parameters:
+        - {name: from, in: query, required: true, schema: {type: string, format: date}}
+        - {name: to, in: query, required: true, schema: {type: string, format: date}}
+      responses: {'200': {description: Performance metrics}}
+  /ingest/odds:
+    post:
+      responses: {'202': {description: Accepted}}
+  /settle/{game_id}:
+    post:
+      parameters: [{name: game_id, in: path, required: true, schema: {type: string}}]
+      responses: {'200': {description: Settled}}

@@ -42,15 +42,16 @@ CREATE TABLE IF NOT EXISTS weather_snapshots (
     id BIGSERIAL PRIMARY KEY,
     game_id TEXT NOT NULL REFERENCES games(id),
     snapshot_at TIMESTAMPTZ NOT NULL,
+    forecast_at TIMESTAMPTZ NOT NULL,
     source TEXT NOT NULL,
     temperature_c NUMERIC,
     wind_mph NUMERIC,
     wind_direction_deg NUMERIC,
     precipitation_probability NUMERIC,
     condition TEXT,
-    UNIQUE(game_id,snapshot_at,source)
+    UNIQUE(game_id,snapshot_at,forecast_at,source)
 );
-CREATE INDEX IF NOT EXISTS idx_weather_game_time ON weather_snapshots(game_id,snapshot_at DESC);
+CREATE INDEX IF NOT EXISTS idx_weather_game_time ON weather_snapshots(game_id,forecast_at DESC);
 
 CREATE TABLE IF NOT EXISTS bets (
     bet_id TEXT PRIMARY KEY,

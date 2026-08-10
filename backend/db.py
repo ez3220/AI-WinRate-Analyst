@@ -70,9 +70,9 @@ def insert_weather(rows: Iterable[Dict[str, Any]]) -> int:
     with connection() as conn, conn.cursor() as cur:
         for r in rows:
             cur.execute('''INSERT INTO weather_snapshots
-                (game_id,snapshot_at,source,temperature_c,wind_mph,wind_direction_deg,
+                (game_id,snapshot_at,forecast_at,source,temperature_c,wind_mph,wind_direction_deg,
                  precipitation_probability,condition)
-                VALUES (%(game_id)s,%(snapshot_at)s,%(source)s,%(temperature_c)s,%(wind_mph)s,
+                VALUES (%(game_id)s,%(snapshot_at)s,%(forecast_at)s,%(source)s,%(temperature_c)s,%(wind_mph)s,
                         %(wind_direction_deg)s,%(precipitation_probability)s,%(condition)s)
                 ON CONFLICT DO NOTHING''', r)
             count += cur.rowcount

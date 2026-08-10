@@ -1,0 +1,22 @@
+name: V4 live sync
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r backend/requirements.txt
+      - name: Run live sync
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          MLB_API_KEY: ${{ secrets.MLB_API_KEY }}
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          MLB_BASE_URL: ${{ secrets.MLB_BASE_URL }}
+          ODDS_BASE_URL: ${{ secrets.ODDS_BASE_URL }}
+        run: python -c "from live_sync import run_live_sync; print(run_live_sync())"

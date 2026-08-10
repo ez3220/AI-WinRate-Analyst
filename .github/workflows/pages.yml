@@ -24,16 +24,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate and prepare V2 site
+      - name: Validate and prepare V3 site
         run: |
           set -e
-          test -s app-v2.html
+          test -s app-v3.html
           test -s manifest.json
           mkdir -p _site
-          cp app-v2.html _site/index.html
+          cp app-v3.html _site/index.html
           cp manifest.json _site/manifest.json
           touch _site/.nojekyll
-          echo "V2 files deployed:"
+          echo "V3 files deployed:"
           find _site -maxdepth 1 -type f -print
 
       - name: Setup Pages

@@ -18,10 +18,17 @@ CREATE TABLE IF NOT EXISTS games (
     game_date DATE,
     start_time TIMESTAMPTZ,
     away_team_id TEXT,
+    away_team_name TEXT,
     home_team_id TEXT,
+    home_team_name TEXT,
     venue_id TEXT,
-    status TEXT NOT NULL DEFAULT 'scheduled'
+    venue_name TEXT,
+    venue_lat NUMERIC,
+    venue_lon NUMERIC,
+    status TEXT NOT NULL DEFAULT 'scheduled',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE INDEX IF NOT EXISTS idx_games_date_time ON games(game_date,start_time);
 
 CREATE TABLE IF NOT EXISTS odds_snapshots (
     id BIGSERIAL PRIMARY KEY,

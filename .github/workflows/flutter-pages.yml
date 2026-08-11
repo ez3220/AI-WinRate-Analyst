@@ -16,6 +16,9 @@ concurrency:
   group: pages
   cancel-in-progress: true
 
+env:
+  FLUTTER_BASE_HREF: /${{ github.event.repository.name }}/
+
 jobs:
   test-build:
     runs-on: ubuntu-latest
@@ -41,10 +44,34 @@ jobs:
       - name: Validate backend Python syntax
         run: python -m compileall -q backend
 
+      - name: Validate production API configuration
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+        run: |
+          set -euo pipefail
+          test -n "$API_BASE_URL"
+          case "$API_BASE_URL" in
+            http://*|https://*) ;;
+            *) echo "API_BASE_URL must be an absolute HTTP(S) URL"; exit 1 ;;
+          esac
+          case "$API_BASE_URL" in
+            *localhost*|*127.0.0.1*) echo "Production API_BASE_URL cannot point to localhost"; exit 1 ;;
+          esac
+
       - name: Build Flutter web
         env:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
-        run: flutter build web --release --base-href "/${{ github.event.repository.name }}/" --dart-define=API_BASE_URL="$API_BASE_URL"
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            test -n "$API_BASE_URL"
+          else
+            API_BASE_URL="https://api.invalid/v4"
+          fi
+          flutter build web --release \
+            --base-href "$FLUTTER_BASE_HREF" \
+            --dart-define=API_BASE_URL="$API_BASE_URL"
 
       - name: Upload Pages artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -68,6 +95,9 @@ jobs:
         with:
           name: github-pages
           path: _site
+
+      - name: Verify Pages artifact
+        run: test -s _site/index.html
 
       - name: Deploy
         id: deployment

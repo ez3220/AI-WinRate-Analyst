@@ -98,6 +98,41 @@ def insert_mlb_stats(rows: Iterable[Dict[str, Any]]) -> int:
     return count
 
 
+def upsert_game_results(rows: Iterable[Dict[str, Any]]) -> int:
+    """Persist only completed game results for point-in-time backtesting."""
+    count = 0
+    with connection() as conn, conn.cursor() as cur:
+        for r in rows:
+            if r.get('status') not in (None, 'final', 'completed'):
+                raise ValueError('game result must be final/completed')
+            away_runs = int(r['away_runs'])
+            home_runs = int(r['home_runs'])
+            if away_runs < 0 or home_runs < 0:
+                raise ValueError('runs must be non-negative')
+            cur.execute('''INSERT INTO game_results
+                (game_id,completed_at,away_runs,home_runs,status,source)
+                VALUES (%(game_id)s,%(completed_at)s,%(away_runs)s,%(home_runs)s,'final',%(source)s)
+                ON CONFLICT (game_id) DO UPDATE SET completed_at=EXCLUDED.completed_at,
+                    away_runs=EXCLUDED.away_runs,home_runs=EXCLUDED.home_runs,
+                    status='final',source=EXCLUDED.source''', r)
+            count += 1
+    return count
+
+
+def list_game_results(game_ids: Iterable[str] | None = None) -> list[dict[str, Any]]:
+    with connection() as conn, conn.cursor() as cur:
+        if game_ids:
+            ids = list(game_ids)
+            cur.execute('''SELECT game_id,completed_at,away_runs,home_runs,status,source
+                           FROM game_results WHERE game_id = ANY(%s)
+                           ORDER BY completed_at DESC''', (ids,))
+        else:
+            cur.execute('''SELECT game_id,completed_at,away_runs,home_runs,status,source
+                           FROM game_results ORDER BY completed_at DESC''')
+        columns = [d.name for d in cur.description]
+        return [dict(zip(columns, row)) for row in cur.fetchall()]
+
+
 def list_games(game_date: str, limit: int = 100) -> list[dict[str, Any]]:
     with connection() as conn, conn.cursor() as cur:
         cur.execute('''SELECT id,sport,game_date,start_time,away_team_id,away_team_name,home_team_id,

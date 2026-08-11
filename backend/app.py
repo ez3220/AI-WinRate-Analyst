@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from db import database_url, latest_odds, latest_weather, list_games
+from prediction_service import prediction_report
 from quant_engine import TeamInput, Market, evaluate
 from live_api import router as live_router
 from runtime_config import cors_origins, validate_runtime
@@ -41,6 +42,10 @@ class EvaluateRequest(BaseModel):
     total: Optional[float] = None
 
 
+def taipei_date() -> str:
+    return datetime.now(ZoneInfo('Asia/Taipei')).date().isoformat()
+
+
 @app.get('/health')
 def health():
     return {'status': 'ok', 'version': '4.0.0'}
@@ -58,11 +63,10 @@ def readiness():
 def games(league: str = 'baseball_mlb'):
     if league != 'baseball_mlb':
         return {'games': [], 'status': 'unsupported_league'}
-    taipei_today = datetime.now(ZoneInfo('Asia/Taipei')).date().isoformat()
     if not database_url():
         raise HTTPException(status_code=503, detail='Database is not configured')
-    rows = list_games(taipei_today)
-    return {'games': rows, 'source': 'v4_postgresql', 'date': taipei_today}
+    game_date = taipei_date()
+    return {'games': list_games(game_date), 'source': 'v4_postgresql', 'date': game_date}
 
 
 @app.get('/games/{game_id}/market')
@@ -79,12 +83,24 @@ def game_market(game_id: str):
 
 @app.get('/predictions')
 def predictions():
-    return {'predictions': [], 'status': 'awaiting_live_sync'}
+    if not database_url():
+        raise HTTPException(status_code=503, detail='Database is not configured')
+    return prediction_report(taipei_date())
 
 
 @app.get('/top3')
 def top3():
-    return {'recommendations': [], 'status': 'awaiting_live_sync'}
+    if not database_url():
+        raise HTTPException(status_code=503, detail='Database is not configured')
+    report = prediction_report(taipei_date())
+    return {
+        'date': report['date'],
+        'generated_at': report['generated_at'],
+        'recommendations': report['top3'],
+        'upset_radar': report['upset_radar'],
+        'status': report['status'],
+        'market_scope': report['market_scope'],
+    }
 
 
 @app.post('/evaluate')

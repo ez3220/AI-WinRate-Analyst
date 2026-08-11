@@ -85,6 +85,20 @@ CREATE TABLE IF NOT EXISTS mlb_stat_snapshots (
 );
 CREATE INDEX IF NOT EXISTS idx_mlb_stats_game_time ON mlb_stat_snapshots(game_id,snapshot_at DESC);
 
+CREATE TABLE IF NOT EXISTS calibration_runs (
+    calibration_id BIGSERIAL PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    model_version TEXT NOT NULL,
+    cutoff_start TIMESTAMPTZ,
+    cutoff_end TIMESTAMPTZ,
+    sample_size INTEGER NOT NULL,
+    brier_score NUMERIC,
+    log_loss NUMERIC,
+    roi_units NUMERIC,
+    notes TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_calibration_model_time ON calibration_runs(model_version,created_at DESC);
+
 CREATE TABLE IF NOT EXISTS bets (
     bet_id TEXT PRIMARY KEY,
     placed_at TIMESTAMPTZ NOT NULL,

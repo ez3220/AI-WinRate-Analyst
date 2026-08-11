@@ -97,6 +97,27 @@ CREATE TABLE IF NOT EXISTS game_results (
 );
 CREATE INDEX IF NOT EXISTS idx_game_results_completed ON game_results(completed_at DESC);
 
+CREATE TABLE IF NOT EXISTS prediction_ledger (
+    prediction_id BIGSERIAL PRIMARY KEY,
+    game_id TEXT NOT NULL REFERENCES games(id),
+    snapshot_at TIMESTAMPTZ NOT NULL,
+    model_version TEXT NOT NULL,
+    market TEXT NOT NULL,
+    outcome TEXT NOT NULL,
+    point NUMERIC,
+    probability NUMERIC NOT NULL,
+    decimal_odds NUMERIC,
+    implied_probability NUMERIC,
+    edge NUMERIC,
+    ev NUMERIC,
+    recommendation TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'v4_quant',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(game_id,snapshot_at,model_version,market,outcome,point)
+);
+CREATE INDEX IF NOT EXISTS idx_prediction_ledger_game_time ON prediction_ledger(game_id,snapshot_at DESC);
+CREATE INDEX IF NOT EXISTS idx_prediction_ledger_model_time ON prediction_ledger(model_version,snapshot_at DESC);
+
 CREATE TABLE IF NOT EXISTS calibration_runs (
     calibration_id BIGSERIAL PRIMARY KEY,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

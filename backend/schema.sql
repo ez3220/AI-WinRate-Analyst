@@ -85,6 +85,18 @@ CREATE TABLE IF NOT EXISTS mlb_stat_snapshots (
 );
 CREATE INDEX IF NOT EXISTS idx_mlb_stats_game_time ON mlb_stat_snapshots(game_id,snapshot_at DESC);
 
+CREATE TABLE IF NOT EXISTS game_results (
+    game_id TEXT PRIMARY KEY REFERENCES games(id),
+    recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    away_runs INTEGER,
+    home_runs INTEGER,
+    status TEXT NOT NULL,
+    source TEXT NOT NULL,
+    UNIQUE(game_id,source)
+);
+CREATE INDEX IF NOT EXISTS idx_game_results_completed ON game_results(completed_at DESC);
+
 CREATE TABLE IF NOT EXISTS calibration_runs (
     calibration_id BIGSERIAL PRIMARY KEY,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

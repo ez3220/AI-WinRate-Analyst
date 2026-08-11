@@ -2,11 +2,11 @@ from datetime import date, datetime
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from db import database_url, latest_odds, latest_weather, list_games
 from quant_engine import TeamInput, Market, evaluate
 from live_api import router as live_router
 from runtime_config import cors_origins, validate_runtime
@@ -55,50 +55,35 @@ def readiness():
 
 
 @app.get('/games')
-async def games(league: str = 'baseball_mlb'):
+def games(league: str = 'baseball_mlb'):
     if league != 'baseball_mlb':
         return {'games': [], 'status': 'unsupported_league'}
     taipei_today = datetime.now(ZoneInfo('Asia/Taipei')).date().isoformat()
-    url = 'https://statsapi.mlb.com/api/v1/schedule'
-    params = {
-        'sportId': 1,
-        'date': taipei_today,
-        'hydrate': 'team,probablePitcher,venue',
-    }
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(url, params=params)
-            response.raise_for_status()
-            payload = response.json()
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f'MLB provider unavailable: {exc}') from exc
+    if not database_url():
+        raise HTTPException(status_code=503, detail='Database is not configured')
+    rows = list_games(taipei_today)
+    return {'games': rows, 'source': 'v4_postgresql', 'date': taipei_today}
 
-    normalized = []
-    for game in [g for d in payload.get('dates', []) for g in d.get('games', [])]:
-        away = game.get('teams', {}).get('away', {})
-        home = game.get('teams', {}).get('home', {})
-        normalized.append({
-            'gamePk': game.get('gamePk'),
-            'gameDate': game.get('gameDate'),
-            'status': game.get('status', {}).get('detailedState'),
-            'away': away.get('team', {}).get('name'),
-            'home': home.get('team', {}).get('name'),
-            'away_pitcher': away.get('probablePitcher', {}).get('fullName'),
-            'home_pitcher': home.get('probablePitcher', {}).get('fullName'),
-            'venue': game.get('venue', {}).get('name'),
-        })
-    return {'games': normalized, 'source': 'MLB Stats API', 'date': taipei_today}
+
+@app.get('/games/{game_id}/market')
+def game_market(game_id: str):
+    if not database_url():
+        raise HTTPException(status_code=503, detail='Database is not configured')
+    return {
+        'game_id': game_id,
+        'odds': latest_odds(game_id),
+        'weather': latest_weather(game_id),
+        'source': 'v4_postgresql',
+    }
 
 
 @app.get('/predictions')
 def predictions():
-    # No fabricated recommendations. The live-sync/quant pipeline owns this endpoint.
     return {'predictions': [], 'status': 'awaiting_live_sync'}
 
 
 @app.get('/top3')
 def top3():
-    # No fabricated Top 3. Return empty until live-sync data is persisted and scored.
     return {'recommendations': [], 'status': 'awaiting_live_sync'}
 
 

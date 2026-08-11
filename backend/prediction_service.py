@@ -6,12 +6,15 @@ Totals use an explicit Poisson baseline; no provider calls are made here.
 from __future__ import annotations
 
 from datetime import datetime
-from math import exp, factorial, floor
+from math import exp, floor
 from typing import Any
 
-from db import list_games, matchup_snapshot
+from db import insert_predictions, list_games, matchup_snapshot
 from model_pipeline import score_matchup
 from ranking import rank_ev, rank_upsets
+
+MODEL_VERSION = 'V4.0.0'
+TOTALS_MODEL_VERSION = 'V4.0.0-poisson-baseline'
 
 
 def _norm_name(value: Any) -> str:
@@ -68,12 +71,10 @@ def _poisson_cdf(k: int, lam: float) -> float:
 
 def _totals_candidate(game: dict[str, Any], snapshot: dict[str, Any], odds: dict[str, Any], projected_total: float | None) -> dict[str, Any]:
     if projected_total is None or odds.get('point') is None:
-        return {
-            'status': 'insufficient_data', 'decision': 'NO BET', 'game_id': game['id'],
-            'away_team': game.get('away_team_name'), 'home_team': game.get('home_team_name'),
-            'market': 'totals', 'outcome': odds.get('outcome'), 'point': odds.get('point'),
-            'reason': 'projected_total_or_market_total_missing',
-        }
+        return {'status': 'insufficient_data', 'decision': 'NO BET', 'game_id': game['id'],
+                'away_team': game.get('away_team_name'), 'home_team': game.get('home_team_name'),
+                'market': 'totals', 'outcome': odds.get('outcome'), 'point': odds.get('point'),
+                'reason': 'projected_total_or_market_total_missing'}
     try:
         total = float(odds['point'])
         price = float(odds['decimal_odds'])
@@ -81,35 +82,25 @@ def _totals_candidate(game: dict[str, Any], snapshot: dict[str, Any], odds: dict
         return {'status': 'invalid_market', 'decision': 'NO BET', 'game_id': game['id'], 'market': 'totals'}
     if price <= 1:
         return {'status': 'invalid_market', 'decision': 'NO BET', 'game_id': game['id'], 'market': 'totals'}
-
-    # Baseline Poisson assumption: total runs ~ Poisson(projected_total).
     under_p = _poisson_cdf(floor(total), projected_total)
     over_p = 1.0 - under_p
     outcome = str(odds.get('outcome', '')).lower()
     probability = over_p if 'over' in outcome else under_p if 'under' in outcome else None
     if probability is None:
         return {'status': 'unmatched_market', 'decision': 'NO BET', 'game_id': game['id'], 'market': 'totals', 'outcome': odds.get('outcome')}
-
     market_probability = 1.0 / price
     edge = probability - market_probability
     ev = probability * price - 1.0
-    if ev >= 0.08 and edge >= 0.04:
-        decision = 'BET'
-    elif ev > 0:
-        decision = 'LEAN'
-    else:
-        decision = 'NO BET'
+    decision = 'BET' if ev >= 0.08 and edge >= 0.04 else 'LEAN' if ev > 0 else 'NO BET'
     ai_score = max(0.0, min(100.0, 50.0 + edge * 100.0))
-    return {
-        'status': 'scored', 'decision': decision, 'game_id': game['id'],
-        'away_team': game.get('away_team_name'), 'home_team': game.get('home_team_name'),
-        'market': 'totals', 'outcome': odds.get('outcome'), 'point': total,
-        'bookmaker': odds.get('bookmaker'), 'snapshot_at': odds.get('snapshot_at'),
-        'decimal_odds': price, 'projected_total': round(projected_total, 2),
-        'probability': round(probability, 6), 'market_probability': round(market_probability, 6),
-        'edge': round(edge, 6), 'ev': round(ev, 6), 'ai_score': round(ai_score, 2),
-        'model': 'poisson_baseline_v4',
-    }
+    return {'status': 'scored', 'decision': decision, 'game_id': game['id'],
+            'away_team': game.get('away_team_name'), 'home_team': game.get('home_team_name'),
+            'market': 'totals', 'outcome': odds.get('outcome'), 'point': total,
+            'bookmaker': odds.get('bookmaker'), 'snapshot_at': odds.get('snapshot_at'),
+            'decimal_odds': price, 'projected_total': round(projected_total, 2),
+            'probability': round(probability, 6), 'market_probability': round(market_probability, 6),
+            'edge': round(edge, 6), 'ev': round(ev, 6), 'ai_score': round(ai_score, 2),
+            'model': TOTALS_MODEL_VERSION}
 
 
 def _candidate(game: dict[str, Any], snapshot: dict[str, Any], odds: dict[str, Any]) -> dict[str, Any]:
@@ -139,11 +130,36 @@ def _candidate(game: dict[str, Any], snapshot: dict[str, Any], odds: dict[str, A
             'decimal_odds': decimal_odds, 'probability': round(probability, 6),
             'market_probability': round(market_probability, 6), 'edge': round(edge, 6),
             'ev': round(ev, 6), 'ai_score': round(ai_score, 2),
-            'away_completeness': scored['away_completeness'], 'home_completeness': scored['home_completeness']}
+            'away_completeness': scored['away_completeness'], 'home_completeness': scored['home_completeness'],
+            'model': MODEL_VERSION}
+
+
+def _input_snapshot_at(snapshot: dict[str, Any], odds: dict[str, Any]) -> Any:
+    values = [odds.get('snapshot_at')]
+    values.extend(row.get('snapshot_at') for row in snapshot.get('stats', []))
+    values.extend(row.get('snapshot_at') for row in snapshot.get('weather', []))
+    values = [value for value in values if value is not None]
+    return max(values) if values else datetime.utcnow()
+
+
+def _ledger_row(candidate: dict[str, Any], snapshot: dict[str, Any], odds: dict[str, Any]) -> dict[str, Any] | None:
+    if candidate.get('status') != 'scored' or not candidate.get('outcome'):
+        return None
+    probability = float(candidate['probability'])
+    price = candidate.get('decimal_odds')
+    return {'game_id': str(candidate['game_id']), 'snapshot_at': _input_snapshot_at(snapshot, odds),
+            'model_version': str(candidate.get('model') or MODEL_VERSION),
+            'market': str(candidate['market']), 'outcome': str(candidate['outcome']),
+            'point': candidate.get('point'), 'probability': probability,
+            'decimal_odds': float(price) if price is not None else None,
+            'implied_probability': candidate.get('market_probability'), 'edge': candidate.get('edge'),
+            'ev': candidate.get('ev'), 'recommendation': str(candidate.get('decision') or 'NO BET'),
+            'source': 'v4_quant'}
 
 
 def build_predictions(game_date: str, limit: int = 100) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
+    ledger_rows: list[dict[str, Any]] = []
     for game in list_games(game_date, limit):
         snapshot = matchup_snapshot(str(game['id']))
         if not snapshot:
@@ -153,9 +169,19 @@ def build_predictions(game_date: str, limit: int = 100) -> list[dict[str, Any]]:
         home_stats = next((r for r in stats if r.get('side') == 'home'), {})
         scored = score_matchup(away_stats, home_stats)
         for odds in _latest_h2h_odds(snapshot['odds']):
-            rows.append(_candidate(game, snapshot, odds))
+            candidate = _candidate(game, snapshot, odds)
+            rows.append(candidate)
+            ledger = _ledger_row(candidate, snapshot, odds)
+            if ledger:
+                ledger_rows.append(ledger)
         for odds in _latest_market_odds(snapshot['odds'], 'totals'):
-            rows.append(_totals_candidate(game, snapshot, odds, scored.get('projected_total')))
+            candidate = _totals_candidate(game, snapshot, odds, scored.get('projected_total'))
+            rows.append(candidate)
+            ledger = _ledger_row(candidate, snapshot, odds)
+            if ledger:
+                ledger_rows.append(ledger)
+    if ledger_rows:
+        insert_predictions(ledger_rows)
     return rows
 
 

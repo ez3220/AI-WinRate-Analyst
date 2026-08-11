@@ -133,6 +133,46 @@ def list_game_results(game_ids: Iterable[str] | None = None) -> list[dict[str, A
         return [dict(zip(columns, row)) for row in cur.fetchall()]
 
 
+def insert_predictions(rows: Iterable[Dict[str, Any]]) -> int:
+    """Persist immutable model outputs for later point-in-time evaluation."""
+    count = 0
+    with connection() as conn, conn.cursor() as cur:
+        for r in rows:
+            probability = float(r['probability'])
+            if not 0.0 <= probability <= 1.0:
+                raise ValueError('prediction probability must be between 0 and 1')
+            odds = r.get('decimal_odds')
+            if odds is not None and float(odds) <= 1.0:
+                raise ValueError('decimal odds must be greater than 1')
+            cur.execute('''INSERT INTO prediction_ledger
+                (game_id,snapshot_at,model_version,market,outcome,point,probability,decimal_odds,
+                 implied_probability,edge,ev,recommendation,source)
+                VALUES (%(game_id)s,%(snapshot_at)s,%(model_version)s,%(market)s,%(outcome)s,%(point)s,
+                        %(probability)s,%(decimal_odds)s,%(implied_probability)s,%(edge)s,%(ev)s,
+                        %(recommendation)s,%(source)s)
+                ON CONFLICT (game_id,snapshot_at,model_version,market,outcome,point) DO NOTHING''', r)
+            count += cur.rowcount
+    return count
+
+
+def list_predictions(game_ids: Iterable[str] | None = None, model_version: str | None = None) -> list[dict[str, Any]]:
+    with connection() as conn, conn.cursor() as cur:
+        clauses = []
+        params: list[Any] = []
+        if game_ids:
+            clauses.append('game_id = ANY(%s)')
+            params.append(list(game_ids))
+        if model_version:
+            clauses.append('model_version=%s')
+            params.append(model_version)
+        where = (' WHERE ' + ' AND '.join(clauses)) if clauses else ''
+        cur.execute(f'''SELECT prediction_id,game_id,snapshot_at,model_version,market,outcome,point,
+                               probability,decimal_odds,implied_probability,edge,ev,recommendation,source,created_at
+                        FROM prediction_ledger{where} ORDER BY snapshot_at ASC''', params)
+        columns = [d.name for d in cur.description]
+        return [dict(zip(columns, row)) for row in cur.fetchall()]
+
+
 def list_games(game_date: str, limit: int = 100) -> list[dict[str, Any]]:
     with connection() as conn, conn.cursor() as cur:
         cur.execute('''SELECT id,sport,game_date,start_time,away_team_id,away_team_name,home_team_id,

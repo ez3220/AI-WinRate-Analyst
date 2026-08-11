@@ -21,6 +21,10 @@ CREATE TABLE IF NOT EXISTS games (
     away_team_name TEXT,
     home_team_id TEXT,
     home_team_name TEXT,
+    away_pitcher_id TEXT,
+    home_pitcher_id TEXT,
+    away_pitcher_name TEXT,
+    home_pitcher_name TEXT,
     venue_id TEXT,
     venue_name TEXT,
     venue_lat NUMERIC,
@@ -59,6 +63,27 @@ CREATE TABLE IF NOT EXISTS weather_snapshots (
     UNIQUE(game_id,snapshot_at,forecast_at,source)
 );
 CREATE INDEX IF NOT EXISTS idx_weather_game_time ON weather_snapshots(game_id,forecast_at DESC);
+
+CREATE TABLE IF NOT EXISTS mlb_stat_snapshots (
+    id BIGSERIAL PRIMARY KEY,
+    game_id TEXT NOT NULL REFERENCES games(id),
+    snapshot_at TIMESTAMPTZ NOT NULL,
+    source TEXT NOT NULL,
+    side TEXT NOT NULL,
+    pitcher_era NUMERIC,
+    pitcher_whip NUMERIC,
+    last5_era NUMERIC,
+    last5_whip NUMERIC,
+    ops NUMERIC,
+    runs_per_game NUMERIC,
+    bullpen_score NUMERIC,
+    lineup_strength NUMERIC,
+    strikeouts NUMERIC,
+    walks NUMERIC,
+    innings_pitched NUMERIC,
+    UNIQUE(game_id,snapshot_at,source,side)
+);
+CREATE INDEX IF NOT EXISTS idx_mlb_stats_game_time ON mlb_stat_snapshots(game_id,snapshot_at DESC);
 
 CREATE TABLE IF NOT EXISTS bets (
     bet_id TEXT PRIMARY KEY,

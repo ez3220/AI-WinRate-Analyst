@@ -1,4 +1,4 @@
-"""PostgreSQL persistence with immutable source/timestamp snapshots."""
+"""PostgreSQL persistence and read layer for immutable live snapshots."""
 import os
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -77,3 +77,33 @@ def insert_weather(rows: Iterable[Dict[str, Any]]) -> int:
                 ON CONFLICT DO NOTHING''', r)
             count += cur.rowcount
     return count
+
+
+def list_games(game_date: str, limit: int = 100) -> list[dict[str, Any]]:
+    """Read games exclusively from PostgreSQL; no provider/network calls."""
+    with connection() as conn, conn.cursor() as cur:
+        cur.execute('''SELECT id,sport,game_date,start_time,away_team_id,home_team_id,venue_id,status
+                       FROM games WHERE game_date=%s ORDER BY start_time NULLS LAST LIMIT %s''',
+                    (game_date, limit))
+        columns = [d.name for d in cur.description]
+        return [dict(zip(columns, row)) for row in cur.fetchall()]
+
+
+def latest_odds(game_id: str, limit: int = 200) -> list[dict[str, Any]]:
+    with connection() as conn, conn.cursor() as cur:
+        cur.execute('''SELECT game_id,snapshot_at,source,bookmaker,market,outcome,point,
+                              decimal_odds,implied_probability
+                       FROM odds_snapshots WHERE game_id=%s
+                       ORDER BY snapshot_at DESC LIMIT %s''', (game_id, limit))
+        columns = [d.name for d in cur.description]
+        return [dict(zip(columns, row)) for row in cur.fetchall()]
+
+
+def latest_weather(game_id: str) -> list[dict[str, Any]]:
+    with connection() as conn, conn.cursor() as cur:
+        cur.execute('''SELECT game_id,snapshot_at,forecast_at,source,temperature_c,wind_mph,
+                              wind_direction_deg,precipitation_probability,condition
+                       FROM weather_snapshots WHERE game_id=%s
+                       ORDER BY forecast_at DESC,snapshot_at DESC''', (game_id,))
+        columns = [d.name for d in cur.description]
+        return [dict(zip(columns, row)) for row in cur.fetchall()]

@@ -44,7 +44,7 @@ def upsert_games(rows: Iterable[Dict[str, Any]]) -> int:
                  away_pitcher_id,home_pitcher_id,away_pitcher_name,home_pitcher_name,
                  venue_id,venue_name,venue_lat,venue_lon,status,updated_at)
                 VALUES (%(id)s,%(sport)s,%(game_date)s,%(start_time)s,%(away_team_id)s,%(away_team_name)s,
-                        %(home_team_id)s,%(home_team_name)s,%(away_team_id)s,%(home_team_id)s,
+                        %(home_team_id)s,%(home_team_name)s,%(away_pitcher_id)s,%(home_pitcher_id)s,
                         %(away_pitcher_name)s,%(home_pitcher_name)s,%(venue_id)s,%(venue_name)s,%(venue_lat)s,
                         %(venue_lon)s,%(status)s,NOW())
                 ON CONFLICT (id) DO UPDATE SET start_time=EXCLUDED.start_time,
@@ -145,7 +145,4 @@ def matchup_snapshot(game_id: str) -> dict[str, Any] | None:
             return None
         columns = [d.name for d in cur.description]
         game = dict(zip(columns, game_row))
-        stats = latest_mlb_stats(game_id)
-        odds = latest_odds(game_id)
-        weather = latest_weather(game_id)
-        return {'game': game, 'stats': stats, 'odds': odds, 'weather': weather}
+        return {'game': game, 'stats': latest_mlb_stats(game_id), 'odds': latest_odds(game_id), 'weather': latest_weather(game_id)}

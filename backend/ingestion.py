@@ -17,10 +17,11 @@ def normalize_game(raw: Dict[str, Any]) -> Dict[str, Any]:
         'game_date': raw.get('game_date'),
         'start_time': raw.get('start_time'),
         'away_team_id': raw.get('away_team_id'),
-        'home_team_id': raw.get('home_team_id'),
         'away_team_name': raw.get('away_team_name'),
+        'home_team_id': raw.get('home_team_id'),
         'home_team_name': raw.get('home_team_name'),
         'venue_id': raw.get('venue_id'),
+        'venue_name': raw.get('venue_name'),
         'venue_lat': raw.get('venue_lat'),
         'venue_lon': raw.get('venue_lon'),
         'status': raw.get('status', 'scheduled'),
@@ -45,6 +46,7 @@ def normalize_odds(raw: Dict[str, Any], game_id: str, captured_at: datetime | No
 
 
 def dedupe_odds(rows: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Dedupe one ingestion batch while preserving distinct snapshots over time."""
     seen = set()
     result = []
     for row in rows:

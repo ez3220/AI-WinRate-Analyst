@@ -25,6 +25,9 @@ class MLBAdapter:
                 venue = game.get('venue', {})
                 away_pitcher = away.get('probablePitcher') or {}
                 home_pitcher = home.get('probablePitcher') or {}
+                status = game.get('status', {}).get('detailedState', 'scheduled')
+                away_score = away.get('score')
+                home_score = home.get('score')
                 rows.append({
                     'id': str(game['gamePk']), 'sport': 'mlb', 'game_date': game_date,
                     'start_time': game.get('gameDate'),
@@ -40,7 +43,9 @@ class MLBAdapter:
                     'venue_name': venue.get('name'),
                     'venue_lat': venue.get('location', {}).get('latitude'),
                     'venue_lon': venue.get('location', {}).get('longitude'),
-                    'status': game.get('status', {}).get('detailedState', 'scheduled'),
+                    'status': status,
+                    'away_score': away_score,
+                    'home_score': home_score,
                 })
         return rows
 

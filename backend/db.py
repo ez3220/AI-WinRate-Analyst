@@ -44,7 +44,7 @@ def upsert_games(rows: Iterable[Dict[str, Any]]) -> int:
                  away_pitcher_id,home_pitcher_id,away_pitcher_name,home_pitcher_name,
                  venue_id,venue_name,venue_lat,venue_lon,status,updated_at)
                 VALUES (%(id)s,%(sport)s,%(game_date)s,%(start_time)s,%(away_team_id)s,%(away_team_name)s,
-                        %(home_team_id)s,%(home_team_name)s,%(away_pitcher_id)s,%(home_pitcher_id)s,
+                        %(home_team_id)s,%(home_team_name)s,%(away_team_id)s,%(home_team_id)s,
                         %(away_pitcher_name)s,%(home_pitcher_name)s,%(venue_id)s,%(venue_name)s,%(venue_lat)s,
                         %(venue_lon)s,%(status)s,NOW())
                 ON CONFLICT (id) DO UPDATE SET start_time=EXCLUDED.start_time,
@@ -132,3 +132,20 @@ def latest_mlb_stats(game_id: str) -> list[dict[str, Any]]:
                        FROM mlb_stat_snapshots WHERE game_id=%s ORDER BY snapshot_at DESC''', (game_id,))
         columns = [d.name for d in cur.description]
         return [dict(zip(columns, row)) for row in cur.fetchall()]
+
+
+def matchup_snapshot(game_id: str) -> dict[str, Any] | None:
+    """Return the latest point-in-time inputs for one game without provider calls."""
+    with connection() as conn, conn.cursor() as cur:
+        cur.execute('''SELECT id,game_date,start_time,away_team_id,away_team_name,home_team_id,home_team_name,
+                              away_pitcher_id,home_pitcher_id,away_pitcher_name,home_pitcher_name,venue_id,venue_name,
+                              venue_lat,venue_lon,status FROM games WHERE id=%s''', (game_id,))
+        game_row = cur.fetchone()
+        if not game_row:
+            return None
+        columns = [d.name for d in cur.description]
+        game = dict(zip(columns, game_row))
+        stats = latest_mlb_stats(game_id)
+        odds = latest_odds(game_id)
+        weather = latest_weather(game_id)
+        return {'game': game, 'stats': stats, 'odds': odds, 'weather': weather}

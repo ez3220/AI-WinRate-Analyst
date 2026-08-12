@@ -1,0 +1,55 @@
+services:
+  - type: web
+    name: ai-winrate-backend
+    runtime: docker
+    rootDir: backend
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ai-winrate-db
+          property: connectionString
+      - key: ODDS_API_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        value: https://ez3220.github.io
+      - key: MLB_BASE_URL
+        value: https://statsapi.mlb.com/api/v1
+      - key: ODDS_BASE_URL
+        value: https://api.the-odds-api.com/v4
+      - key: WEATHER_BASE_URL
+        value: https://api.open-meteo.com/v1/forecast
+      - key: MLB_API_KEY
+        sync: false
+      - key: WEATHER_API_KEY
+        sync: false
+
+  - type: cron
+    name: ai-winrate-live-sync
+    runtime: docker
+    rootDir: backend
+    plan: starter
+    schedule: "*/15 * * * *"
+    dockerCommand: python -c "from live_sync import run_live_sync; print(run_live_sync())"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ai-winrate-db
+          property: connectionString
+      - key: ODDS_API_KEY
+        sync: false
+      - key: MLB_BASE_URL
+        value: https://statsapi.mlb.com/api/v1
+      - key: ODDS_BASE_URL
+        value: https://api.the-odds-api.com/v4
+      - key: WEATHER_BASE_URL
+        value: https://api.open-meteo.com/v1/forecast
+      - key: MLB_API_KEY
+        sync: false
+      - key: WEATHER_API_KEY
+        sync: false
+
+databases:
+  - name: ai-winrate-db
+    plan: free

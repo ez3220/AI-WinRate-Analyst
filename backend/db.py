@@ -53,7 +53,7 @@ def upsert_games(rows: Iterable[Dict[str, Any]]) -> int:
                     away_pitcher_id=EXCLUDED.away_pitcher_id,home_pitcher_id=EXCLUDED.home_pitcher_id,
                     away_pitcher_name=EXCLUDED.away_pitcher_name,home_pitcher_name=EXCLUDED.home_pitcher_name,
                     venue_id=EXCLUDED.venue_id,venue_name=EXCLUDED.venue_name,venue_lat=EXCLUDED.venue_lat,
-                    venue_lon=EXCLUDED.venue_lon,status=EXCLUDED.status,updated_at=NOW()''', r)
+                    venue_lon=EXCLUDED.venue_lon,status=EXCLUDED.status,updated_at=NOW())''', r)
             count += 1
     return count
 
@@ -171,6 +171,16 @@ def list_predictions(game_ids: Iterable[str] | None = None, model_version: str |
                         FROM prediction_ledger{where} ORDER BY snapshot_at ASC''', params)
         columns = [d.name for d in cur.description]
         return [dict(zip(columns, row)) for row in cur.fetchall()]
+
+
+def insert_calibration_run(run: Dict[str, Any]) -> int:
+    """Persist one backtest/calibration result without fabricating metrics."""
+    with connection() as conn, conn.cursor() as cur:
+        cur.execute('''INSERT INTO calibration_runs
+            (model_version,cutoff_start,cutoff_end,sample_size,brier_score,log_loss,roi_units,notes)
+            VALUES (%(model_version)s,%(cutoff_start)s,%(cutoff_end)s,%(sample_size)s,%(brier_score)s,
+                    %(log_loss)s,%(roi_units)s,%(notes)s) RETURNING calibration_id''', run)
+        return cur.fetchone()[0]
 
 
 def list_games(game_date: str, limit: int = 100) -> list[dict[str, Any]]:

@@ -41,8 +41,22 @@ jobs:
       - name: Test Flutter
         run: flutter test
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Test backend
+        run: pytest -q backend
+
       - name: Validate backend Python syntax
         run: python -m compileall -q backend
+
+      - name: Build backend container
+        run: docker build -t ai-winrate-backend:ci backend
 
       - name: Validate production API configuration
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

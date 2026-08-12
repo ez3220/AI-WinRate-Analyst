@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 import httpx
+
+TAIPEI = ZoneInfo('Asia/Taipei')
 
 
 class MLBAdapter:
@@ -12,41 +15,46 @@ class MLBAdapter:
         self.base_url = base_url.rstrip('/')
 
     def games(self, game_date: str) -> list[dict[str, Any]]:
-        params = {'sportId': 1, 'date': game_date, 'hydrate': 'team,probablePitcher,venue'}
+        target = datetime.fromisoformat(game_date).date()
+        query_dates = [target - timedelta(days=1), target, target + timedelta(days=1)]
+        rows: list[dict[str, Any]] = []
+        seen: set[str] = set()
         with httpx.Client(timeout=20) as client:
-            response = client.get(f'{self.base_url}/schedule', params=params)
-            response.raise_for_status()
-            payload = response.json()
-        rows = []
-        for day in payload.get('dates', []):
-            for game in day.get('games', []):
-                away = game.get('teams', {}).get('away', {})
-                home = game.get('teams', {}).get('home', {})
-                venue = game.get('venue', {})
-                away_pitcher = away.get('probablePitcher') or {}
-                home_pitcher = home.get('probablePitcher') or {}
-                status = game.get('status', {}).get('detailedState', 'scheduled')
-                away_score = away.get('score')
-                home_score = home.get('score')
-                rows.append({
-                    'id': str(game['gamePk']), 'sport': 'mlb', 'game_date': game_date,
-                    'start_time': game.get('gameDate'),
-                    'away_team_id': str(away.get('team', {}).get('id')),
-                    'home_team_id': str(home.get('team', {}).get('id')),
-                    'away_team_name': away.get('team', {}).get('name'),
-                    'home_team_name': home.get('team', {}).get('name'),
-                    'away_pitcher_id': str(away_pitcher.get('id')) if away_pitcher.get('id') else None,
-                    'home_pitcher_id': str(home_pitcher.get('id')) if home_pitcher.get('id') else None,
-                    'away_pitcher_name': away_pitcher.get('fullName'),
-                    'home_pitcher_name': home_pitcher.get('fullName'),
-                    'venue_id': str(venue.get('id')) if venue.get('id') else None,
-                    'venue_name': venue.get('name'),
-                    'venue_lat': venue.get('location', {}).get('latitude'),
-                    'venue_lon': venue.get('location', {}).get('longitude'),
-                    'status': status,
-                    'away_score': away_score,
-                    'home_score': home_score,
-                })
+            for query_date in query_dates:
+                response = client.get(f'{self.base_url}/schedule', params={
+                    'sportId': 1, 'date': query_date.isoformat(), 'hydrate': 'team,probablePitcher,venue'})
+                response.raise_for_status()
+                payload = response.json()
+                for day in payload.get('dates', []):
+                    for game in day.get('games', []):
+                        start = game.get('gameDate')
+                        if not start:
+                            continue
+                        start_dt = datetime.fromisoformat(start.replace('Z', '+00:00')).astimezone(TAIPEI)
+                        if start_dt.date() != target:
+                            continue
+                        game_id = str(game['gamePk'])
+                        if game_id in seen:
+                            continue
+                        seen.add(game_id)
+                        away = game.get('teams', {}).get('away', {})
+                        home = game.get('teams', {}).get('home', {})
+                        venue = game.get('venue', {})
+                        away_pitcher = away.get('probablePitcher') or {}
+                        home_pitcher = home.get('probablePitcher') or {}
+                        status = game.get('status', {}).get('detailedState', 'scheduled')
+                        rows.append({
+                            'id': game_id, 'sport': 'mlb', 'game_date': game_date, 'start_time': start,
+                            'away_team_id': str(away.get('team', {}).get('id')),
+                            'home_team_id': str(home.get('team', {}).get('id')),
+                            'away_team_name': away.get('team', {}).get('name'), 'home_team_name': home.get('team', {}).get('name'),
+                            'away_pitcher_id': str(away_pitcher.get('id')) if away_pitcher.get('id') else None,
+                            'home_pitcher_id': str(home_pitcher.get('id')) if home_pitcher.get('id') else None,
+                            'away_pitcher_name': away_pitcher.get('fullName'), 'home_pitcher_name': home_pitcher.get('fullName'),
+                            'venue_id': str(venue.get('id')) if venue.get('id') else None, 'venue_name': venue.get('name'),
+                            'venue_lat': venue.get('location', {}).get('latitude'), 'venue_lon': venue.get('location', {}).get('longitude'),
+                            'status': status, 'away_score': away.get('score'), 'home_score': home.get('score'),
+                        })
         return rows
 
 
@@ -60,6 +68,7 @@ class OddsAdapter:
             raise RuntimeError('ODDS_API_KEY is not configured')
         params = {'apiKey': self.api_key, 'regions': os.getenv('ODDS_REGIONS', 'us'),
                   'markets': os.getenv('ODDS_MARKETS', 'h2h,totals'), 'oddsFormat': 'decimal'}
+        target = datetime.fromisoformat(game_date).date()
         with httpx.Client(timeout=20) as client:
             response = client.get(f'{self.base_url}/sports/baseball_mlb/odds', params=params)
             response.raise_for_status()
@@ -67,7 +76,10 @@ class OddsAdapter:
         rows = []
         for event in events:
             commence = event.get('commence_time')
-            if commence and datetime.fromisoformat(commence.replace('Z', '+00:00')).date().isoformat() != game_date:
+            if not commence:
+                continue
+            commence_date = datetime.fromisoformat(commence.replace('Z', '+00:00')).astimezone(TAIPEI).date()
+            if commence_date != target:
                 continue
             for bookmaker in event.get('bookmakers', []):
                 for market in bookmaker.get('markets', []):
@@ -102,7 +114,7 @@ class WeatherAdapter:
         for i, timestamp in enumerate(hourly.get('time', [])):
             rows.append({'game_id': game_id, 'snapshot_at': captured_at,
                          'forecast_at': datetime.fromisoformat(timestamp).astimezone(timezone.utc),
-                         'source': 'weather_provider',
+                         'source': 'open-meteo' if 'open-meteo.com' in self.base_url else 'weather_provider',
                          'temperature_c': (hourly.get('temperature_2m') or [None])[i],
                          'wind_mph': ((hourly.get('wind_speed_10m') or [None])[i] or 0) * 0.621371,
                          'wind_direction_deg': (hourly.get('wind_direction_10m') or [None])[i],

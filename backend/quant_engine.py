@@ -1,8 +1,4 @@
-"""V3.3 deterministic betting engine.
-
-Pure functions only: no network calls, no secrets, no invented data.
-Inputs are point-in-time snapshots from the backend.
-"""
+"""V4 deterministic quant engine: pure calculations, no network or secrets."""
 from dataclasses import dataclass
 from math import exp
 from typing import Optional
@@ -44,9 +40,6 @@ def _norm(value: Optional[float], low: float, high: float, invert: bool = False)
 
 
 def team_strength(t: TeamInput) -> float:
-    """Returns a 0..100 team strength from available point-in-time inputs."""
-    parts = []
-    weights = []
     metrics = [
         (_norm(t.pitcher_era, 2.0, 6.0, True), 0.22),
         (_norm(t.pitcher_whip, 0.95, 1.60, True), 0.13),
@@ -56,36 +49,29 @@ def team_strength(t: TeamInput) -> float:
         (_norm(t.bullpen_score, 0, 100), 0.14),
         (_norm(t.lineup_strength, 0, 100), 0.12),
     ]
-    for score, weight in metrics:
-        if score is not None:
-            parts.append(score * weight)
-            weights.append(weight)
-    if not weights:
+    parts = [(score * weight, weight) for score, weight in metrics if score is not None]
+    if not parts:
         return 50.0
-    return 100.0 * sum(parts) / sum(weights)
+    return 100.0 * sum(value for value, _ in parts) / sum(weight for _, weight in parts)
 
 
 def win_probability(away: TeamInput, home: TeamInput, home_advantage: float = 3.0) -> float:
-    """Logistic conversion of relative team strength. Home advantage is percentage points in strength space."""
     a = team_strength(away)
     h = team_strength(home) + home_advantage
     return 1.0 / (1.0 + exp(-(h - a) / 12.0))
 
 
-def projected_total(away: TeamInput, home: TeamInput) -> float:
-    """Transparent run projection; returns None only when both run inputs are absent."""
-    def run(t: TeamInput) -> Optional[float]:
-        if t.runs_per_game is None:
-            return None
-        pitching = 0 if t.pitcher_era is None else (t.pitcher_era - 4.00) * 0.35
-        bullpen = 0 if t.bullpen_score is None else (50 - t.bullpen_score) / 100
+def projected_total(away: TeamInput, home: TeamInput) -> Optional[float]:
+    """Return a total only when both teams have real run-rate inputs."""
+    if away.runs_per_game is None or home.runs_per_game is None:
+        return None
+
+    def run(t: TeamInput) -> float:
+        pitching = 0.0 if t.pitcher_era is None else (t.pitcher_era - 4.00) * 0.35
+        bullpen = 0.0 if t.bullpen_score is None else (50 - t.bullpen_score) / 100
         return max(1.5, t.runs_per_game + pitching + bullpen + t.weather_adjustment)
-    a, h = run(away), run(home)
-    if a is None and h is None:
-        return 8.0
-    if a is None: a = 4.0
-    if h is None: h = 4.0
-    return round(a + h, 2)
+
+    return round(run(away) + run(home), 2)
 
 
 def evaluate(away: TeamInput, home: TeamInput, market: Market) -> Prediction:

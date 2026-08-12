@@ -1,0 +1,104 @@
+name: Deploy Flutter Web to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  FLUTTER_BASE_HREF: /${{ github.event.repository.name }}/
+
+jobs:
+  test-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Analyze Flutter
+        run: flutter analyze
+
+      - name: Test Flutter
+        run: flutter test
+
+      - name: Validate backend Python syntax
+        run: python -m compileall -q backend
+
+      - name: Validate production API configuration
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+        run: |
+          set -euo pipefail
+          test -n "$API_BASE_URL"
+          case "$API_BASE_URL" in
+            http://*|https://*) ;;
+            *) echo "API_BASE_URL must be an absolute HTTP(S) URL"; exit 1 ;;
+          esac
+          case "$API_BASE_URL" in
+            *localhost*|*127.0.0.1*) echo "Production API_BASE_URL cannot point to localhost"; exit 1 ;;
+          esac
+
+      - name: Build Flutter web
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            test -n "$API_BASE_URL"
+          else
+            API_BASE_URL="https://api.invalid/v4"
+          fi
+          flutter build web --release \
+            --base-href "$FLUTTER_BASE_HREF" \
+            --dart-define=API_BASE_URL="$API_BASE_URL"
+
+      - name: Upload Pages artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: build/web
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test-build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Download Pages artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: github-pages
+          path: _site
+
+      - name: Verify Pages artifact
+        run: test -s _site/index.html
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

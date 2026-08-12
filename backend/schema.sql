@@ -1,5 +1,148 @@
-CREATE TABLE IF NOT EXISTS games (id TEXT PRIMARY KEY, sport TEXT NOT NULL, game_date DATE, start_time TIMESTAMPTZ, away_team_id TEXT, home_team_id TEXT, venue_id TEXT, status TEXT NOT NULL DEFAULT 'scheduled');
-CREATE TABLE IF NOT EXISTS odds_snapshots (id BIGSERIAL PRIMARY KEY, game_id TEXT NOT NULL REFERENCES games(id), snapshot_at TIMESTAMPTZ NOT NULL, bookmaker TEXT NOT NULL, market TEXT NOT NULL, outcome TEXT NOT NULL, point NUMERIC, decimal_odds NUMERIC NOT NULL, implied_probability NUMERIC, UNIQUE(game_id,snapshot_at,bookmaker,market,outcome,point));
+CREATE TABLE IF NOT EXISTS sync_runs (
+    sync_id BIGSERIAL PRIMARY KEY,
+    started_at TIMESTAMPTZ NOT NULL,
+    finished_at TIMESTAMPTZ,
+    game_date DATE NOT NULL,
+    source TEXT NOT NULL,
+    status TEXT NOT NULL,
+    games_fetched INTEGER NOT NULL DEFAULT 0,
+    odds_fetched INTEGER NOT NULL DEFAULT 0,
+    weather_fetched INTEGER NOT NULL DEFAULT 0,
+    error TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_sync_runs_date_time ON sync_runs(game_date, started_at DESC);
+
+CREATE TABLE IF NOT EXISTS games (
+    id TEXT PRIMARY KEY,
+    sport TEXT NOT NULL,
+    game_date DATE,
+    start_time TIMESTAMPTZ,
+    away_team_id TEXT,
+    away_team_name TEXT,
+    home_team_id TEXT,
+    home_team_name TEXT,
+    away_pitcher_id TEXT,
+    home_pitcher_id TEXT,
+    away_pitcher_name TEXT,
+    home_pitcher_name TEXT,
+    venue_id TEXT,
+    venue_name TEXT,
+    venue_lat NUMERIC,
+    venue_lon NUMERIC,
+    status TEXT NOT NULL DEFAULT 'scheduled',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_games_date_time ON games(game_date,start_time);
+
+CREATE TABLE IF NOT EXISTS odds_snapshots (
+    id BIGSERIAL PRIMARY KEY,
+    game_id TEXT NOT NULL REFERENCES games(id),
+    snapshot_at TIMESTAMPTZ NOT NULL,
+    source TEXT NOT NULL DEFAULT 'odds_provider',
+    bookmaker TEXT NOT NULL,
+    market TEXT NOT NULL,
+    outcome TEXT NOT NULL,
+    point NUMERIC,
+    decimal_odds NUMERIC NOT NULL,
+    implied_probability NUMERIC,
+    UNIQUE(game_id,snapshot_at,source,bookmaker,market,outcome,point)
+);
 CREATE INDEX IF NOT EXISTS idx_odds_game_time ON odds_snapshots(game_id,snapshot_at DESC);
-CREATE TABLE IF NOT EXISTS bets (bet_id TEXT PRIMARY KEY, placed_at TIMESTAMPTZ NOT NULL, game_id TEXT NOT NULL, market TEXT NOT NULL, outcome TEXT NOT NULL, entry_odds NUMERIC NOT NULL, stake_units NUMERIC NOT NULL, model_probability NUMERIC NOT NULL, closing_odds NUMERIC, profit_units NUMERIC, settled BOOLEAN NOT NULL DEFAULT FALSE);
+
+CREATE TABLE IF NOT EXISTS weather_snapshots (
+    id BIGSERIAL PRIMARY KEY,
+    game_id TEXT NOT NULL REFERENCES games(id),
+    snapshot_at TIMESTAMPTZ NOT NULL,
+    forecast_at TIMESTAMPTZ NOT NULL,
+    source TEXT NOT NULL,
+    temperature_c NUMERIC,
+    wind_mph NUMERIC,
+    wind_direction_deg NUMERIC,
+    precipitation_probability NUMERIC,
+    condition TEXT,
+    UNIQUE(game_id,snapshot_at,forecast_at,source)
+);
+CREATE INDEX IF NOT EXISTS idx_weather_game_time ON weather_snapshots(game_id,forecast_at DESC);
+
+CREATE TABLE IF NOT EXISTS mlb_stat_snapshots (
+    id BIGSERIAL PRIMARY KEY,
+    game_id TEXT NOT NULL REFERENCES games(id),
+    snapshot_at TIMESTAMPTZ NOT NULL,
+    source TEXT NOT NULL,
+    side TEXT NOT NULL,
+    pitcher_era NUMERIC,
+    pitcher_whip NUMERIC,
+    last5_era NUMERIC,
+    last5_whip NUMERIC,
+    ops NUMERIC,
+    runs_per_game NUMERIC,
+    bullpen_score NUMERIC,
+    lineup_strength NUMERIC,
+    strikeouts NUMERIC,
+    walks NUMERIC,
+    innings_pitched NUMERIC,
+    UNIQUE(game_id,snapshot_at,source,side)
+);
+CREATE INDEX IF NOT EXISTS idx_mlb_stats_game_time ON mlb_stat_snapshots(game_id,snapshot_at DESC);
+
+CREATE TABLE IF NOT EXISTS game_results (
+    game_id TEXT PRIMARY KEY REFERENCES games(id),
+    recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    away_runs INTEGER,
+    home_runs INTEGER,
+    status TEXT NOT NULL,
+    source TEXT NOT NULL,
+    UNIQUE(game_id,source)
+);
+CREATE INDEX IF NOT EXISTS idx_game_results_completed ON game_results(completed_at DESC);
+
+CREATE TABLE IF NOT EXISTS prediction_ledger (
+    prediction_id BIGSERIAL PRIMARY KEY,
+    game_id TEXT NOT NULL REFERENCES games(id),
+    snapshot_at TIMESTAMPTZ NOT NULL,
+    model_version TEXT NOT NULL,
+    market TEXT NOT NULL,
+    outcome TEXT NOT NULL,
+    point NUMERIC,
+    probability NUMERIC NOT NULL,
+    decimal_odds NUMERIC,
+    implied_probability NUMERIC,
+    edge NUMERIC,
+    ev NUMERIC,
+    recommendation TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'v4_quant',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(game_id,snapshot_at,model_version,market,outcome,point)
+);
+CREATE INDEX IF NOT EXISTS idx_prediction_ledger_game_time ON prediction_ledger(game_id,snapshot_at DESC);
+CREATE INDEX IF NOT EXISTS idx_prediction_ledger_model_time ON prediction_ledger(model_version,snapshot_at DESC);
+
+CREATE TABLE IF NOT EXISTS calibration_runs (
+    calibration_id BIGSERIAL PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    model_version TEXT NOT NULL,
+    cutoff_start TIMESTAMPTZ,
+    cutoff_end TIMESTAMPTZ,
+    sample_size INTEGER NOT NULL,
+    brier_score NUMERIC,
+    log_loss NUMERIC,
+    roi_units NUMERIC,
+    notes TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_calibration_model_time ON calibration_runs(model_version,created_at DESC);
+
+CREATE TABLE IF NOT EXISTS bets (
+    bet_id TEXT PRIMARY KEY,
+    placed_at TIMESTAMPTZ NOT NULL,
+    game_id TEXT NOT NULL,
+    market TEXT NOT NULL,
+    outcome TEXT NOT NULL,
+    entry_odds NUMERIC NOT NULL,
+    stake_units NUMERIC NOT NULL,
+    model_probability NUMERIC NOT NULL,
+    closing_odds NUMERIC,
+    profit_units NUMERIC,
+    settled BOOLEAN NOT NULL DEFAULT FALSE
+);
 CREATE INDEX IF NOT EXISTS idx_bets_placed ON bets(placed_at DESC);

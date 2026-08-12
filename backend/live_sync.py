@@ -3,8 +3,9 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from provider_config import ProviderConfig
 from provider_adapters import MLBAdapter, OddsAdapter, WeatherAdapter
+from mlb_stats import MLBStatsAdapter
 from ingestion import normalize_game, normalize_odds, dedupe_odds
-from db import begin_sync, finish_sync, upsert_games, insert_odds, insert_weather
+from db import begin_sync, finish_sync, upsert_games, insert_odds, insert_weather, insert_mlb_stats, upsert_game_results
 
 TAIPEI = ZoneInfo('Asia/Taipei')
 
@@ -24,8 +25,8 @@ def run_live_sync(game_date: str | None = None):
         raise RuntimeError('Live provider configuration incomplete: ' + ', '.join(status['missing']))
 
     game_date = game_date or taipei_game_date()
-    sync_id = begin_sync(game_date, 'mlb+odds+weather')
-    games_written = odds_written = weather_written = 0
+    sync_id = begin_sync(game_date, 'mlb+mlb-statsapi+odds+weather')
+    games_written = odds_written = weather_written = stats_written = results_written = 0
 
     try:
         games_raw = MLBAdapter(cfg.mlb_base_url, cfg.mlb_api_key).games(game_date)
@@ -47,6 +48,25 @@ def run_live_sync(game_date: str | None = None):
         games_written = upsert_games(games)
         odds_written = insert_odds(odds)
 
+        stats_rows = []
+        stats_adapter = MLBStatsAdapter(cfg.mlb_base_url)
+        for game in games:
+            stats_rows.extend(stats_adapter.snapshot_game(game, captured_at=captured_at))
+        if stats_rows:
+            stats_written = insert_mlb_stats(stats_rows)
+
+        result_rows = []
+        for game in games:
+            status_text = str(game.get('status', '')).lower()
+            if game.get('away_score') is not None and game.get('home_score') is not None and status_text in {'final', 'game over', 'completed'}:
+                result_rows.append({
+                    'game_id': str(game['id']), 'completed_at': captured_at,
+                    'away_runs': int(game['away_score']), 'home_runs': int(game['home_score']),
+                    'status': 'final', 'source': 'mlb_statsapi',
+                })
+        if result_rows:
+            results_written = upsert_game_results(result_rows)
+
         if cfg.weather_base_url:
             weather = WeatherAdapter(cfg.weather_base_url, cfg.weather_api_key)
             weather_rows = []
@@ -57,8 +77,11 @@ def run_live_sync(game_date: str | None = None):
             weather_written = insert_weather(weather_rows)
 
         finish_sync(sync_id, 'success', games_written, odds_written, weather_written)
-        return {'sync_id': sync_id, 'games_written': games_written, 'odds_written': odds_written,
-                'weather_written': weather_written, 'game_date': game_date, 'status': 'success'}
+        return {
+            'sync_id': sync_id, 'games_written': games_written, 'odds_written': odds_written,
+            'weather_written': weather_written, 'stats_written': stats_written,
+            'results_written': results_written, 'game_date': game_date, 'status': 'success'
+        }
     except Exception as exc:
         finish_sync(sync_id, 'failed', games_written, odds_written, weather_written, str(exc)[:1000])
         raise

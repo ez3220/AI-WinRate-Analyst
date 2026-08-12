@@ -10,6 +10,7 @@ from db import database_url, latest_odds, latest_weather, list_games
 from prediction_service import prediction_report
 from quant_engine import TeamInput, Market, evaluate
 from live_api import router as live_router
+from backtest_api import router as backtest_router
 from runtime_config import cors_origins, validate_runtime
 
 app = FastAPI(title='AI WinRate Analyst API', version='4.0.0')
@@ -21,6 +22,7 @@ app.add_middleware(
     allow_headers=['*'],
 )
 app.include_router(live_router)
+app.include_router(backtest_router)
 
 
 class TeamPayload(BaseModel):

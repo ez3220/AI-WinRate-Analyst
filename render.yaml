@@ -5,7 +5,6 @@ services:
     rootDir: backend
     plan: free
     healthCheckPath: /health
-    preDeployCommand: python init_db.py
     envVars:
       - key: DATABASE_URL
         fromDatabase:

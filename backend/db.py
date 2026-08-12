@@ -53,7 +53,7 @@ def upsert_games(rows: Iterable[Dict[str, Any]]) -> int:
                     away_pitcher_id=EXCLUDED.away_pitcher_id,home_pitcher_id=EXCLUDED.home_pitcher_id,
                     away_pitcher_name=EXCLUDED.away_pitcher_name,home_pitcher_name=EXCLUDED.home_pitcher_name,
                     venue_id=EXCLUDED.venue_id,venue_name=EXCLUDED.venue_name,venue_lat=EXCLUDED.venue_lat,
-                    venue_lon=EXCLUDED.venue_lon,status=EXCLUDED.status,updated_at=NOW())''', r)
+                    venue_lon=EXCLUDED.venue_lon,status=EXCLUDED.status,updated_at=NOW()''', r)
             count += 1
     return count
 
@@ -99,7 +99,6 @@ def insert_mlb_stats(rows: Iterable[Dict[str, Any]]) -> int:
 
 
 def upsert_game_results(rows: Iterable[Dict[str, Any]]) -> int:
-    """Persist only completed game results for point-in-time backtesting."""
     count = 0
     with connection() as conn, conn.cursor() as cur:
         for r in rows:
@@ -134,7 +133,6 @@ def list_game_results(game_ids: Iterable[str] | None = None) -> list[dict[str, A
 
 
 def insert_predictions(rows: Iterable[Dict[str, Any]]) -> int:
-    """Persist immutable model outputs for later point-in-time evaluation."""
     count = 0
     with connection() as conn, conn.cursor() as cur:
         for r in rows:
@@ -160,21 +158,22 @@ def list_predictions(game_ids: Iterable[str] | None = None, model_version: str |
         clauses = []
         params: list[Any] = []
         if game_ids:
-            clauses.append('game_id = ANY(%s)')
+            clauses.append('p.game_id = ANY(%s)')
             params.append(list(game_ids))
         if model_version:
-            clauses.append('model_version=%s')
+            clauses.append('p.model_version=%s')
             params.append(model_version)
         where = (' WHERE ' + ' AND '.join(clauses)) if clauses else ''
-        cur.execute(f'''SELECT prediction_id,game_id,snapshot_at,model_version,market,outcome,point,
-                               probability,decimal_odds,implied_probability,edge,ev,recommendation,source,created_at
-                        FROM prediction_ledger{where} ORDER BY snapshot_at ASC''', params)
+        cur.execute(f'''SELECT p.prediction_id,p.game_id,p.snapshot_at,p.model_version,p.market,p.outcome,p.point,
+                               p.probability,p.decimal_odds,p.implied_probability,p.edge,p.ev,p.recommendation,
+                               p.source,p.created_at,g.start_time,g.away_team_name,g.home_team_name
+                        FROM prediction_ledger p JOIN games g ON g.id=p.game_id{where}
+                        ORDER BY p.snapshot_at ASC''', params)
         columns = [d.name for d in cur.description]
         return [dict(zip(columns, row)) for row in cur.fetchall()]
 
 
 def insert_calibration_run(run: Dict[str, Any]) -> int:
-    """Persist one backtest/calibration result without fabricating metrics."""
     with connection() as conn, conn.cursor() as cur:
         cur.execute('''INSERT INTO calibration_runs
             (model_version,cutoff_start,cutoff_end,sample_size,brier_score,log_loss,roi_units,notes)
@@ -183,12 +182,34 @@ def insert_calibration_run(run: Dict[str, Any]) -> int:
         return cur.fetchone()[0]
 
 
+def list_calibration_runs(model_version: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
+    with connection() as conn, conn.cursor() as cur:
+        if model_version:
+            cur.execute('''SELECT calibration_id,created_at,model_version,cutoff_start,cutoff_end,sample_size,
+                                  brier_score,log_loss,roi_units,notes FROM calibration_runs
+                           WHERE model_version=%s ORDER BY created_at DESC LIMIT %s''', (model_version, limit))
+        else:
+            cur.execute('''SELECT calibration_id,created_at,model_version,cutoff_start,cutoff_end,sample_size,
+                                  brier_score,log_loss,roi_units,notes FROM calibration_runs
+                           ORDER BY created_at DESC LIMIT %s''', (limit,))
+        columns = [d.name for d in cur.description]
+        return [dict(zip(columns, row)) for row in cur.fetchall()]
+
+
 def list_games(game_date: str, limit: int = 100) -> list[dict[str, Any]]:
     with connection() as conn, conn.cursor() as cur:
         cur.execute('''SELECT id,sport,game_date,start_time,away_team_id,away_team_name,home_team_id,
                               home_team_name,away_pitcher_id,home_pitcher_id,away_pitcher_name,home_pitcher_name,
                               venue_id,venue_name,venue_lat,venue_lon,status,updated_at
                        FROM games WHERE game_date=%s ORDER BY start_time NULLS LAST LIMIT %s''', (game_date, limit))
+        columns = [d.name for d in cur.description]
+        return [dict(zip(columns, row)) for row in cur.fetchall()]
+
+
+def list_all_games(limit: int = 10000) -> list[dict[str, Any]]:
+    with connection() as conn, conn.cursor() as cur:
+        cur.execute('''SELECT id,start_time,away_team_name,home_team_name,status FROM games
+                       ORDER BY start_time ASC NULLS LAST LIMIT %s''', (limit,))
         columns = [d.name for d in cur.description]
         return [dict(zip(columns, row)) for row in cur.fetchall()]
 
@@ -220,7 +241,6 @@ def latest_mlb_stats(game_id: str) -> list[dict[str, Any]]:
 
 
 def matchup_snapshot(game_id: str) -> dict[str, Any] | None:
-    """Return the latest point-in-time inputs for one game without provider calls."""
     with connection() as conn, conn.cursor() as cur:
         cur.execute('''SELECT id,game_date,start_time,away_team_id,away_team_name,home_team_id,home_team_name,
                               away_pitcher_id,home_pitcher_id,away_pitcher_name,home_pitcher_name,venue_id,venue_name,

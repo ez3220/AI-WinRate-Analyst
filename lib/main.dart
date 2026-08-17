@@ -26,18 +26,29 @@ class Dashboard extends StatefulWidget {
 class _DashboardState extends State<Dashboard> {
   final BackendApi api = BackendApi();
   bool loading = true;
+  bool ready = false;
   String? error;
   List<dynamic> top = const [];
+  Map<String, dynamic>? meta;
 
   @override
   void initState() { super.initState(); refresh(); }
 
   Future<void> refresh() async {
-    setState(() { loading = true; error = null; });
+    setState(() { loading = true; error = null; ready = false; });
     try {
+      final health = await api.readiness();
+      if (health['ready'] != true) {
+        throw Exception('V4 Backend 尚未就緒');
+      }
       final result = await api.top3();
       if (!mounted) return;
-      setState(() { top = result; loading = false; });
+      setState(() {
+        ready = true;
+        top = result;
+        meta = health;
+        loading = false;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() { loading = false; error = e.toString(); });
@@ -51,7 +62,7 @@ class _DashboardState extends State<Dashboard> {
         Text('AI 勝率分析師', style: TextStyle(fontWeight: FontWeight.w900)),
         Text('V4 · Backend First', style: TextStyle(fontSize: 11, color: Colors.white54)),
       ]),
-      actions: [IconButton(onPressed: refresh, icon: const Icon(Icons.refresh))],
+      actions: [IconButton(onPressed: loading ? null : refresh, icon: const Icon(Icons.refresh))],
     ),
     body: RefreshIndicator(
       onRefresh: refresh,
@@ -60,17 +71,33 @@ class _DashboardState extends State<Dashboard> {
           const Text('今日投注核心', style: TextStyle(fontSize: 27, fontWeight: FontWeight.w900)),
           const SizedBox(height: 6),
           Text('賽程、盤口、天氣與模型資料統一由 V4 Backend 提供。', style: TextStyle(color: Colors.grey.shade400)),
+          const SizedBox(height: 12),
+          Row(children: [
+            Icon(ready ? Icons.cloud_done : Icons.cloud_off, size: 18, color: ready ? Colors.greenAccent : Colors.orangeAccent),
+            const SizedBox(width: 6),
+            Text(ready ? 'Backend Ready' : 'Backend Offline', style: const TextStyle(fontWeight: FontWeight.w700)),
+          ]),
         ]))),
         const SizedBox(height: 16),
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           const Text('TOP 3', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900)),
-          Chip(label: Text(loading ? '同步中' : 'Live API')),
+          Chip(label: Text(loading ? '同步中' : ready ? 'Live API' : '無資料')),
         ]),
         const SizedBox(height: 8),
         if (loading) const Padding(padding: EdgeInsets.all(30), child: Center(child: CircularProgressIndicator())),
-        if (error != null) Card(child: Padding(padding: const EdgeInsets.all(16), child: Text('Backend 尚未就緒：$error'))),
+        if (error != null) Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('目前無法取得 V4 資料', style: TextStyle(fontWeight: FontWeight.w900)),
+          const SizedBox(height: 6),
+          Text(error!, style: TextStyle(color: Colors.grey.shade400)),
+          const SizedBox(height: 12),
+          FilledButton.icon(onPressed: refresh, icon: const Icon(Icons.refresh), label: const Text('重新連線')),
+        ]))),
         if (!loading && error == null && top.isEmpty) const Card(child: Padding(padding: EdgeInsets.all(16), child: Text('目前沒有可用推薦。Backend 回傳空資料時不產生虛構投注訊號。'))),
         for (final item in top) _RecommendationCard(item: item),
+        if (meta != null) ...[
+          const SizedBox(height: 18),
+          Text('資料狀態：${meta!['status'] ?? 'ready'}', style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+        ],
         const SizedBox(height: 18),
         const Text('風控原則', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
         const SizedBox(height: 8),

@@ -1,88 +1,83 @@
 """Database-backed point-in-time backtest orchestration."""
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Any
 
-from backtest_runner import evaluate_predictions, build_calibration_run
-from db import list_predictions, list_game_results, list_games, insert_calibration_run
+from backtest_runner import build_calibration_run, evaluate_ledger
+from db import insert_calibration_run, list_game_results, list_predictions
 
 
-def _winner(row: dict[str, Any], prediction: dict[str, Any]) -> bool | None:
-    away = row.get("away_runs")
-    home = row.get("home_runs")
-    if away is None or home is None:
-        return None
-    outcome = str(prediction.get("outcome", "")).strip().lower()
-    market = str(prediction.get("market", "")).strip().lower()
-    away_name = str(prediction.get("away_team_name", "")).strip().lower()
-    home_name = str(prediction.get("home_team_name", "")).strip().lower()
-    if market in {"h2h", "moneyline", "win_loss", "moneyline"}:
-        if outcome in {"away", "away_team"} or (away_name and outcome == away_name):
-            return int(away) > int(home)
-        if outcome in {"home", "home_team"} or (home_name and outcome == home_name):
-            return int(home) > int(away)
-    return None
+def run_backtest(
+    model_version: str | None = None,
+    cutoff_start: datetime | None = None,
+    cutoff_end: datetime | None = None,
+    persist: bool = True,
+) -> dict[str, Any]:
+    """Evaluate immutable prediction snapshots against final game results.
 
-
-def _total_winner(row: dict[str, Any], prediction: dict[str, Any]) -> bool | None:
-    away = row.get("away_runs")
-    home = row.get("home_runs")
-    point = prediction.get("point")
-    if away is None or home is None or point is None:
-        return None
-    total = int(away) + int(home)
-    outcome = str(prediction.get("outcome", "")).strip().lower()
-    if outcome in {"over", "o"}:
-        return total > float(point)
-    if outcome in {"under", "u"}:
-        return total < float(point)
-    return None
-
-
-def run_backtest(model_version: str | None = None, cutoff_start: datetime | None = None,
-                 cutoff_end: datetime | None = None, persist: bool = True) -> dict[str, Any]:
+    ``list_predictions`` already joins each prediction to its game's start time
+    and team names. Build the game lookup from that result so the point-in-time
+    eligibility check in ``evaluate_ledger`` is actually enforced.
+    """
     predictions = list_predictions(model_version=model_version)
-    results = {r["game_id"]: r for r in list_game_results()}
-    games = {g["id"]: g for g in list_games("1970-01-01", limit=1)}
-    del games
 
-    rows = []
+    if cutoff_start is not None:
+        predictions = [p for p in predictions if p["snapshot_at"] >= cutoff_start]
+    if cutoff_end is not None:
+        predictions = [p for p in predictions if p["snapshot_at"] < cutoff_end]
+
+    game_ids = {str(p["game_id"]) for p in predictions}
+    results = {
+        str(r["game_id"]): r
+        for r in list_game_results(game_ids=game_ids)
+    }
+
+    games: dict[str, dict[str, Any]] = {}
     for p in predictions:
-        if cutoff_start and p["snapshot_at"] < cutoff_start:
-            continue
-        if cutoff_end and p["snapshot_at"] >= cutoff_end:
-            continue
-        result = results.get(p["game_id"])
-        if not result:
-            continue
-        game_start = None
-        # Prefer game start_time; prediction itself remains immutable.
-        # The query layer can be extended later for bulk game lookup.
-        if p.get("market", "").lower() in {"h2h", "moneyline", "win_loss", "totals", "over_under"}:
-            pass
-        if game_start is not None and p["snapshot_at"] >= game_start:
-            continue
-        market = str(p.get("market", "")).lower()
-        if market in {"totals", "over_under", "ou"}:
-            won = _total_winner(result, p)
-        else:
-            won = _winner(result, p)
-        if won is None:
-            continue
-        row = dict(p)
-        row["won"] = int(won)
-        row["bet"] = str(p.get("recommendation", "")).upper() == "BET"
-        if row.get("decimal_odds") is None:
-            row["bet"] = False
-        rows.append(row)
+        game_id = str(p["game_id"])
+        games.setdefault(
+            game_id,
+            {
+                "id": game_id,
+                "start_time": p.get("start_time"),
+                "away_team_name": p.get("away_team_name"),
+                "home_team_name": p.get("home_team_name"),
+            },
+        )
 
-    # Do not claim point-in-time validity unless the game start time is available.
-    # Current DB query does not bulk-return it alongside predictions, so require an
-    # explicit cutoff for production runs; otherwise callers receive zero samples.
-    first_pitch = cutoff_start or datetime.max.replace(tzinfo=predictions[0]["snapshot_at"].tzinfo) if predictions else datetime.max
-    metrics = evaluate_predictions(rows, first_pitch)
-    run = build_calibration_run(model_version or "all", cutoff_start or datetime.min.replace(tzinfo=first_pitch.tzinfo),
-                                cutoff_end or datetime.max.replace(tzinfo=first_pitch.tzinfo), metrics,
-                                notes="Database-backed backtest; only rows with resolved final results are evaluated.")
+    metrics = evaluate_ledger(predictions, results, games)
+
+    tz = None
+    for p in predictions:
+        snapshot_at = p.get("snapshot_at")
+        if snapshot_at is not None and getattr(snapshot_at, "tzinfo", None) is not None:
+            tz = snapshot_at.tzinfo
+            break
+
+    if cutoff_start is not None:
+        run_start = cutoff_start
+    elif tz is not None:
+        run_start = datetime.min.replace(tzinfo=tz)
+    else:
+        run_start = datetime.min
+
+    if cutoff_end is not None:
+        run_end = cutoff_end
+    elif tz is not None:
+        run_end = datetime.max.replace(tzinfo=tz)
+    else:
+        run_end = datetime.max
+
+    run = build_calibration_run(
+        model_version or "all",
+        run_start,
+        run_end,
+        metrics,
+        notes="Database-backed point-in-time backtest; only eligible predictions with final results are evaluated.",
+    )
+
     if persist and metrics["sample_size"] > 0:
         insert_calibration_run(run)
+
     return run

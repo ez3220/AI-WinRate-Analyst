@@ -12,18 +12,32 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install -r requirements.txt
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: pip install -r requirements.txt
         working-directory: backend
-      - name: Bootstrap database schema
+
+      - name: Run backend tests
+        run: pytest -q
+        working-directory: backend
+
+      - name: Bootstrap PostgreSQL schema
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: python init_db.py
         working-directory: backend
+
       - name: Fetch and persist live MLB odds
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import os
 import httpx
 
-BASE_URL = 'https://api.the-odds-api.com'
+DEFAULT_BASE_URL = 'https://api.the-odds-api.com'
 SPORT_KEY = 'baseball_mlb'
 MARKETS = 'h2h,spreads,totals'
 
@@ -12,6 +12,7 @@ def fetch_mlb_odds() -> list[dict]:
     key = os.getenv('ODDS_API_KEY')
     if not key:
         raise RuntimeError('ODDS_API_KEY is not configured')
+    base_url = os.getenv('ODDS_BASE_URL', DEFAULT_BASE_URL).rstrip('/')
     params = {
         'regions': os.getenv('ODDS_REGIONS', 'us'),
         'markets': MARKETS,
@@ -19,9 +20,12 @@ def fetch_mlb_odds() -> list[dict]:
         'apiKey': key,
     }
     with httpx.Client(timeout=20) as client:
-        r = client.get(f'{BASE_URL}/v4/sports/{SPORT_KEY}/odds', params=params)
+        r = client.get(f'{base_url}/v4/sports/{SPORT_KEY}/odds', params=params)
         r.raise_for_status()
-        return r.json()
+        payload = r.json()
+    if not isinstance(payload, list):
+        raise ValueError('The Odds API returned an unexpected payload')
+    return payload
 
 
 def normalize_mlb_odds(events: list[dict]) -> list[dict]:
@@ -32,6 +36,9 @@ def normalize_mlb_odds(events: list[dict]) -> list[dict]:
         for bookmaker in event.get('bookmakers', []):
             for market in bookmaker.get('markets', []):
                 for outcome in market.get('outcomes', []):
+                    price = float(outcome['price'])
+                    if price <= 1:
+                        continue
                     rows.append({
                         'game_id': game_id,
                         'snapshot_at': captured,
@@ -40,7 +47,7 @@ def normalize_mlb_odds(events: list[dict]) -> list[dict]:
                         'market': market.get('key'),
                         'outcome': outcome.get('name'),
                         'point': outcome.get('point'),
-                        'decimal_odds': float(outcome['price']),
-                        'implied_probability': 1 / float(outcome['price']),
+                        'decimal_odds': price,
+                        'implied_probability': 1 / price,
                     })
     return rows

@@ -2,6 +2,12 @@ import os
 
 
 class ProviderConfig:
+    """Runtime provider configuration.
+
+    MLB StatsAPI and Open-Meteo have public endpoints; The Odds API requires
+    an API key. Environment variables can override all base URLs.
+    """
+
     def __init__(self):
         self.mlb_base_url = os.getenv('MLB_BASE_URL', 'https://statsapi.mlb.com/api/v1')
         self.odds_base_url = os.getenv('ODDS_BASE_URL', 'https://api.the-odds-api.com/v4')
@@ -17,5 +23,7 @@ class ProviderConfig:
         return {
             'ready': not missing,
             'missing': missing,
+            'mlb_ready': bool(self.mlb_base_url),
             'weather_ready': bool(self.weather_base_url),
+            'odds_ready': bool(self.odds_base_url and self.odds_api_key),
         }

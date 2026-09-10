@@ -10,11 +10,14 @@ def test_no_odds_is_no_bet():
 
 
 def test_positive_price_can_create_value():
-    a = TeamInput(pitcher_era=3.0, pitcher_whip=1.05, last5_era=2.8, ops=.80, runs_per_game=5.2, bullpen_score=85, lineup_strength=85)
-    h = TeamInput(pitcher_era=4.8, pitcher_whip=1.40, last5_era=5.0, ops=.68, runs_per_game=3.8, bullpen_score=50, lineup_strength=55)
+    # evaluate() reports the home-side win probability. Make the home team
+    # clearly stronger so the fixture tests positive EV rather than direction.
+    a = TeamInput(pitcher_era=4.8, pitcher_whip=1.40, last5_era=5.0, ops=.68, runs_per_game=3.8, bullpen_score=50, lineup_strength=55)
+    h = TeamInput(pitcher_era=3.0, pitcher_whip=1.05, last5_era=2.8, ops=.80, runs_per_game=5.2, bullpen_score=85, lineup_strength=85)
     p = evaluate(a, h, Market(decimal_odds=2.20))
     assert p.ev is not None
     assert p.probability > .5
+    assert p.ev > 0
 
 
 def test_projection_exists():

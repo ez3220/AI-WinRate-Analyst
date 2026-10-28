@@ -1,34 +1,89 @@
-name: Deploy AI WinRate PWA to GitHub Pages
+name: Deploy AI WinRate mobile PWA to GitHub Pages
+
 on:
   push:
     branches: [main]
   workflow_dispatch:
+
 permissions:
   contents: read
   pages: write
   id-token: write
+
 concurrency:
   group: pages
   cancel-in-progress: true
+
+env:
+  FLUTTER_BASE_HREF: /AI-WinRate-Analyst/
+  DEFAULT_API_BASE_URL: https://ai-winrate-backend.onrender.com
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-      - name: Upload static site
-        uses: actions/upload-pages-artifact@v3
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
         with:
-          path: .
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze Flutter
+        run: flutter analyze
+
+      - name: Test Flutter
+        run: flutter test
+
+      - name: Select production API URL
+        env:
+          API_BASE_URL_SECRET: ${{ secrets.API_BASE_URL }}
+        run: |
+          set -euo pipefail
+          API_BASE_URL="${API_BASE_URL_SECRET:-$DEFAULT_API_BASE_URL}"
+          case "$API_BASE_URL" in
+            http://*|https://*) ;;
+            *) echo "API_BASE_URL must be an absolute HTTP(S) URL"; exit 1 ;;
+          esac
+          case "$API_BASE_URL" in
+            *localhost*|*127.0.0.1*) echo "Production API_BASE_URL cannot point to localhost"; exit 1 ;;
+          esac
+          echo "API_BASE_URL=$API_BASE_URL" >> "$GITHUB_ENV"
+
+      - name: Build Flutter web PWA
+        run: |
+          set -euo pipefail
+          flutter build web --release \
+            --base-href "$FLUTTER_BASE_HREF" \
+            --dart-define=API_BASE_URL="$API_BASE_URL"
+
+      - name: Verify web app and manifest
+        run: |
+          set -euo pipefail
+          test -s build/web/index.html
+          test -s build/web/manifest.json
+          test -s build/web/icons/ai-winrate-icon.svg
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: build/web
+
   deploy:
+    needs: build
+    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
     steps:
-      - name: Deploy to GitHub Pages
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4

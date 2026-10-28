@@ -22,14 +22,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Flutter project platforms
-        run: flutter create --platforms=android,ios --project-name ai_winrate_analyst --org com.aiwinrateanalyst .
-
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
+
+      - name: Setup Flutter project platforms
+        run: flutter create --platforms=android,ios --project-name ai_winrate_analyst --org com.aiwinrateanalyst .
 
       - name: Install dependencies
         run: flutter pub get

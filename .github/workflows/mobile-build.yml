@@ -29,7 +29,12 @@ jobs:
           cache: true
 
       - name: Setup Flutter project platforms
-        run: flutter create --platforms=android,ios --project-name ai_winrate_analyst --org com.aiwinrateanalyst .
+        run: |
+          set -euo pipefail
+          flutter create --platforms=android,ios --project-name ai_winrate_analyst --org com.aiwinrateanalyst .
+          # flutter create injects a sample MyApp test when the repo has no platform folders.
+          # It conflicts with this app's WinRateApp entry point, so remove only the generated sample.
+          rm -f test/widget_test.dart analysis_options.yaml
 
       - name: Install dependencies
         run: flutter pub get
@@ -84,7 +89,12 @@ jobs:
           cache: true
 
       - name: Setup Flutter project platforms
-        run: flutter create --platforms=android,ios --project-name ai_winrate_analyst --org com.aiwinrateanalyst .
+        run: |
+          set -euo pipefail
+          flutter create --platforms=android,ios --project-name ai_winrate_analyst --org com.aiwinrateanalyst .
+          # flutter create injects a sample MyApp test when the repo has no platform folders.
+          # It conflicts with this app's WinRateApp entry point, so remove only the generated sample.
+          rm -f test/widget_test.dart analysis_options.yaml
 
       - name: Install dependencies
         run: flutter pub get

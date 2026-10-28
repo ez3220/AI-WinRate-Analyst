@@ -74,7 +74,7 @@ class _DashboardState extends State<Dashboard> {
           final taipeiGameDate = parsed == null
               ? (item['officialDate']?.toString() ?? '')
               : parsed.toUtc().add(const Duration(hours: 8)).toIso8601String().substring(0, 10);
-          if (taipeiGameDate == taipeiDate || item['officialDate'] == taipeiDate) {
+          if (taipeiGameDate == taipeiDate) {
             games.add(item);
           }
         }

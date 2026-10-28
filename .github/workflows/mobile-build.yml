@@ -40,6 +40,20 @@ jobs:
       - name: Test
         run: flutter test
 
+      - name: Validate API URL
+        env:
+          API_BASE_URL_SECRET: ${{ secrets.API_BASE_URL }}
+        run: |
+          set -euo pipefail
+          API_BASE_URL="${API_BASE_URL_SECRET:-https://ai-winrate-backend.onrender.com}"
+          case "$API_BASE_URL" in
+            http://*|https://*) ;;
+            *) echo "API_BASE_URL must be an absolute HTTP(S) URL"; exit 1 ;;
+          esac
+          case "$API_BASE_URL" in
+            *localhost*|*127.0.0.1*) echo "Production API_BASE_URL cannot point to localhost"; exit 1 ;;
+          esac
+
       - name: Build release APK
         env:
           API_BASE_URL_SECRET: ${{ secrets.API_BASE_URL }}
@@ -63,14 +77,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Flutter project platforms
-        run: flutter create --platforms=android,ios --project-name ai_winrate_analyst --org com.aiwinrateanalyst .
-
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
+
+      - name: Setup Flutter project platforms
+        run: flutter create --platforms=android,ios --project-name ai_winrate_analyst --org com.aiwinrateanalyst .
 
       - name: Install dependencies
         run: flutter pub get

@@ -192,6 +192,8 @@ class _DashboardState extends State<Dashboard> {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
             children: [
               _statusCard(),
+              const SizedBox(height: 10),
+              _installGuide(),
               const SizedBox(height: 14),
               if (loading)
                 const Padding(
@@ -234,6 +236,34 @@ class _DashboardState extends State<Dashboard> {
                     textAlign: TextAlign.center,
                   ),
                 ),
+            ],
+          ),
+        ),
+      );
+
+  Widget _installGuide() => Card(
+        color: const Color(0xFF171A23),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.add_to_home_screen, color: Color(0xFFD6B35A)),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('加入 iPhone 主畫面',
+                        style: TextStyle(fontWeight: FontWeight.w900)),
+                    SizedBox(height: 5),
+                    Text(
+                      '用 Safari 開啟本 App 網址 → 點「分享」→「加入主畫面」。之後可像 App 一樣直接開啟，不必從 App Store 安裝，也不需要手動啟動後端。',
+                      style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),

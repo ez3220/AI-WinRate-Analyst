@@ -1,0 +1,94 @@
+name: Build Android APK and iOS app artifacts
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android-apk:
+    name: Build Android release APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Build release APK
+        env:
+          API_BASE_URL_SECRET: ${{ secrets.API_BASE_URL }}
+        run: |
+          set -euo pipefail
+          API_BASE_URL="${API_BASE_URL_SECRET:-https://ai-winrate-backend.onrender.com}"
+          flutter build apk --release --dart-define=API_BASE_URL="$API_BASE_URL"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-winrate-analyst-android-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  ios-app:
+    name: Build unsigned iOS app
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build iOS without signing
+        env:
+          API_BASE_URL_SECRET: ${{ secrets.API_BASE_URL }}
+        run: |
+          set -euo pipefail
+          API_BASE_URL="${API_BASE_URL_SECRET:-https://ai-winrate-backend.onrender.com}"
+          flutter build ios --release --no-codesign --dart-define=API_BASE_URL="$API_BASE_URL"
+
+      - name: Package iOS app for validation
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          APP_PATH="build/ios/iphoneos/Runner.app"
+          test -d "$APP_PATH"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" dist/AI-WinRate-Analyst-iOS-unsigned.zip
+
+      - name: Upload unsigned iOS app
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-winrate-analyst-ios-unsigned-app
+          path: dist/AI-WinRate-Analyst-iOS-unsigned.zip
+          if-no-files-found: error
+          retention-days: 14

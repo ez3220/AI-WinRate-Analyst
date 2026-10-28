@@ -1,12 +1,20 @@
 {
   "name": "AI 勝率分析師",
-  "short_name": "勝率分析師",
-  "start_url": ".",
+  "short_name": "AI勝率",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#080A0F",
   "theme_color": "#080A0F",
-  "description": "AI 勝率分析師 V4",
+  "description": "AI 棒球賽程、模型訊號與投注風險分析",
   "orientation": "portrait-primary",
   "lang": "zh-TW",
-  "icons": []
+  "icons": [
+    {
+      "src": "icons/ai-winrate-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
 }

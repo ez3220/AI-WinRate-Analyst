@@ -1,1 +1,20 @@
-{"name":"AI 勝率分析師","short_name":"勝率分析師","start_url":"./","display":"standalone","background_color":"#090b10","theme_color":"#090b10","lang":"zh-Hant","icons":[]}
+{
+  "name": "AI勝率分析師",
+  "short_name": "AI勝率",
+  "description": "棒球賽事量化分析與投注風險評估",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#090b10",
+  "theme_color": "#090b10",
+  "lang": "zh-Hant",
+  "icons": [
+    {
+      "src": "./assets/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

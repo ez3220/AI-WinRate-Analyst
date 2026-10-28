@@ -388,42 +388,104 @@ class _RecommendationCard extends StatelessWidget {
   const _RecommendationCard({required this.item});
   final dynamic item;
 
-  String value(String key) =>
-      item is Map ? '${item[key] ?? '—'}' : '—';
+  String _value(String key, [String fallback = '—']) =>
+      item is Map ? '${item[key] ?? fallback}' : fallback;
+
+  String _percent(String key) {
+    if (item is! Map || item[key] is! num) return '—';
+    return '${((item[key] as num) * 100).toStringAsFixed(1)}%';
+  }
+
+  String _ev() {
+    if (item is! Map || item['ev'] is! num) return '—';
+    final value = (item['ev'] as num) * 100;
+    return '${value >= 0 ? '+' : ''}${value.toStringAsFixed(1)}%';
+  }
 
   @override
-  Widget build(BuildContext context) => Card(
-        margin: const EdgeInsets.only(bottom: 10),
-        child: Padding(
-          padding: const EdgeInsets.all(15),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(value('league'),
-                      style: const TextStyle(
-                          color: Color(0xFFD6B35A),
-                          fontWeight: FontWeight.w800)),
-                  Text(value('confidence'),
-                      style: const TextStyle(color: Color(0xFFD6B35A))),
-                ],
-              ),
-              const SizedBox(height: 7),
-              Text(value('matchup'),
-                  style: const TextStyle(
-                      fontSize: 19, fontWeight: FontWeight.w900)),
-              const SizedBox(height: 7),
-              Text('推薦：${value('pick')}   EV：${value('ev')}',
-                  style: const TextStyle(fontWeight: FontWeight.w800)),
-              if (value('reason') != '—') ...[
-                const SizedBox(height: 7),
-                Text(value('reason'),
-                    style: const TextStyle(color: Colors.white70, fontSize: 12)),
+  Widget build(BuildContext context) {
+    final away = _value('away_team');
+    final home = _value('home_team');
+    final matchup = _value('matchup', away != '—' && home != '—' ? '$away @ $home' : '對戰資料待確認');
+    final decision = _value('decision', 'NO BET');
+    final market = _value('market', 'market');
+    final marketLabel = market == 'h2h' ? '勝負' : market == 'totals' ? '大小分' : market;
+    final outcome = _value('outcome', _value('pick'));
+    final ev = _ev();
+    final color = decision == 'BET'
+        ? Colors.greenAccent
+        : decision == 'LEAN'
+            ? const Color(0xFFD6B35A)
+            : Colors.white54;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.all(15),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(matchup,
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    color: color.withValues(alpha: 0.12),
+                  ),
+                  child: Text(decision, style: TextStyle(color: color, fontWeight: FontWeight.w900)),
+                ),
               ],
+            ),
+            const SizedBox(height: 8),
+            Text('$marketLabel：$outcome',
+                style: const TextStyle(color: Color(0xFFD6B35A), fontWeight: FontWeight.w800)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _metric('模型機率', _percent('probability')),
+                _metric('EV', ev),
+                _metric('賠率', _value('decimal_odds')),
+              ],
+            ),
+            if (_value('point') != '—') ...[
+              const SizedBox(height: 6),
+              Text('盤口：${_value('point')}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
             ],
-          ),
+            if (_value('bookmaker') != '—') ...[
+              const SizedBox(height: 4),
+              Text('來源：${_value('bookmaker')}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+            ],
+            if (_value('reason') != '—') ...[
+              const SizedBox(height: 7),
+              Text(_value('reason'), style: const TextStyle(color: Colors.white54, fontSize: 11)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _metric(String label, String value) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0D1016),
+          borderRadius: BorderRadius.circular(9),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: const TextStyle(color: Colors.white54, fontSize: 10)),
+            const SizedBox(height: 3),
+            Text(value, style: const TextStyle(fontWeight: FontWeight.w900)),
+          ],
         ),
       );
 }
